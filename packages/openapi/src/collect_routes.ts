@@ -48,12 +48,17 @@ export async function collectRoutes(
     middlewareByRoute.set(`${route.domain}:${route.pattern}:${route.methods.join(',')}`, names)
   }
 
-  // Round-tripped through JSON like the dev server and `node ace codegen` do, which drops closure handlers.
-  const serialized: Record<string, RoutesListItem[]> = JSON.parse(JSON.stringify(live))
+  // A closure has no types to read, and the scanner keeps it when it is named.
+  const controllerRoutes = Object.values(live).map(routes =>
+    routes.filter(route => !(route.handler instanceof Function)),
+  )
+
+  // Round-tripped through JSON like the dev server and `node ace codegen` do.
+  const serialized: RoutesListItem[][] = JSON.parse(JSON.stringify(controllerRoutes))
   const scanner = new RoutesScanner(appRoot, [])
   scanner.filter(route => isIncluded(route.name ?? '', config.routes))
 
-  for (const routes of Object.values(serialized)) await scanner.scan(routes)
+  for (const routes of serialized) await scanner.scan(routes)
 
   return scanner.getScannedRoutes().map(route => {
     const pattern = toOpenApiPath(route.pattern)

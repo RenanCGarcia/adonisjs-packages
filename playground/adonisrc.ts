@@ -104,7 +104,12 @@ export default defineConfig({
   | the production build.
   |
   */
-  metaFiles: [],
+  metaFiles: [
+    {
+      pattern: 'openapi.json',
+      reloadServer: false,
+    },
+  ],
 
   hooks: {
     init: [
@@ -113,5 +118,6 @@ export default defineConfig({
       }),
       generateRegistry(),
     ],
+    buildStarting: [() => import('@enzopita/adonisjs-openapi/build_hook')],
   },
 })

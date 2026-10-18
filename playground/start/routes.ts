@@ -10,6 +10,7 @@
 import { middleware } from '#start/kernel'
 import router from '@adonisjs/core/services/router'
 import { controllers } from '#generated/controllers'
+import { openapiRoutes } from '@enzopita/adonisjs-openapi/routes'
 
 router.get('/', () => {
   return { hello: 'world' }
@@ -45,3 +46,5 @@ router
       .as('users')
   })
   .prefix('/api/v1')
+
+openapiRoutes().use(middleware.auth({ guards: ['basic'] }))

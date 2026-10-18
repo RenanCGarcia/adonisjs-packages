@@ -13,7 +13,7 @@ Generate an OpenAPI 3.1 document from an AdonisJS 7 app, with no annotations. Th
 | `422` response                      | Added to every route that validates its input                                                  |
 | `401` response and `security`       | Named middleware on the route, mapped in the config                                            |
 
-Nothing in the app imports from this package. Everything it reads is code an AdonisJS app already has, or a doc comment.
+Controllers, validators and transformers import nothing from this package. Everything it reads is code an AdonisJS app already has, or a doc comment.
 
 ## Install
 
@@ -21,7 +21,7 @@ Nothing in the app imports from this package. Everything it reads is code an Ado
 node ace add @enzopita/adonisjs-openapi
 ```
 
-The command installs the package, registers its ace command in `adonisrc.ts`, and creates `config/openapi.ts`. The package needs `@adonisjs/assembler`, which every AdonisJS app has as a dev dependency.
+The command installs the package and creates `config/openapi.ts`. In `adonisrc.ts`, it registers the ace command and the build hook that writes the document during `node ace build`, and adds the document to `metaFiles`. The package needs `@adonisjs/assembler`, which every AdonisJS app has as a dev dependency.
 
 ## Generate the document
 
@@ -60,6 +60,147 @@ export default defineConfig({
 - `info` is the OpenAPI Info Object: `title` and `version`, and optionally `summary`, `description`, `termsOfService`, `contact` and `license`.
 - `tags` is copied to the document's top-level `tags`. Use it to describe the tags operations use and to set their order.
 - `middlewareSecurity` maps a named middleware, such as `middleware.auth()`, to a key of `securitySchemes`. Routes behind it get the scheme in `security` and a `401` response.
+
+## Serve a docs page
+
+`openapiRoutes()` registers two routes: a page that renders the document with [Scalar](https://github.com/scalar/scalar), and the document itself.
+
+```ts
+// start/routes.ts
+import { middleware } from '#start/kernel'
+import { openapiRoutes } from '@enzopita/adonisjs-openapi/routes'
+
+openapiRoutes().use(middleware.auth({ guards: ['basic'] }))
+```
+
+| Route                    | Name               | Response                            |
+| ------------------------ | ------------------ | ----------------------------------- |
+| `GET /docs`              | `openapi.ui`       | The HTML page                       |
+| `GET /docs/openapi.json` | `openapi.document` | The document, as `application/json` |
+
+`openapiRoutes()` returns the route group, so `.use()`, `.domain()`, `.prefix()` and `.as()` work on it. `.as('admin')` names the routes `admin.openapi.ui` and `admin.openapi.document`.
+
+The page loads the document from a URL relative to the page, so it keeps working behind a proxy that serves the app under a path prefix. The generator leaves both routes out of the document, as it does every closure route.
+
+### Turn the page on or off
+
+The routes exist only where `openapiRoutes()` runs. To serve the page outside production only:
+
+```ts
+import app from '@adonisjs/core/services/app'
+
+if (!app.inProduction) openapiRoutes()
+```
+
+To turn it on with an environment variable, declare `OPENAPI_DOCS: Env.schema.boolean.optional()` in `start/env.ts`, then:
+
+```ts
+import env from '#start/env'
+
+if (env.get('OPENAPI_DOCS')) openapiRoutes().use(middleware.auth({ guards: ['basic'] }))
+```
+
+To remove the page, delete the call. No other file of the app imports `@enzopita/adonisjs-openapi/routes`.
+
+### Options
+
+| Option      | Default                                    | Description                                                                                                                                      |
+| ----------- | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `prefix`    | `'/docs'`                                  | Path of the page. The document is at `<prefix>/openapi.json`.                                                                                    |
+| `ui`        | `'scalar'`                                 | `'scalar'`, `'swagger-ui'`, `'redoc'`, or a function that returns the page HTML.                                                                 |
+| `uiOptions` | `{}`                                       | Passed as JSON to the UI's init call: `Scalar.createApiReference()`, `SwaggerUIBundle()` or Redoc's `init()`.                                    |
+| `cdn`       | jsDelivr, see below                        | `{ script }` for Scalar and Redoc, `{ script, style }` for Swagger UI. Replaces the default URLs, for example to serve the files from `public/`. |
+| `title`     | `info.title` from the config               | The page `<title>`.                                                                                                                              |
+| `source`    | `'file'` in production, `'live'` otherwise | `'live'` generates the document on each request. `'file'` serves the file `node ace openapi:generate` wrote.                                     |
+| `file`      | `output` from the config                   | The file `source: 'file'` reads, relative to the app root.                                                                                       |
+| `transform` | none                                       | `(document, ctx) => document`, applied to each response. It receives a copy, so it can edit the document in place.                               |
+
+The default assets come from jsDelivr, pinned to a major version:
+
+| UI           | Files                                                                           |
+| ------------ | ------------------------------------------------------------------------------- |
+| `scalar`     | `@scalar/api-reference@1/dist/browser/standalone.js`                            |
+| `swagger-ui` | `swagger-ui-dist@5/swagger-ui-bundle.js` and `swagger-ui-dist@5/swagger-ui.css` |
+| `redoc`      | `redoc@3/bundles/redoc.standalone.js`                                           |
+
+A function `ui` receives `title`, `documentUrl` and `nonce`, and returns the whole page. `documentUrl` is relative to the page. `nonce` is set when Shield's CSP is enabled.
+
+```ts
+openapiRoutes({
+  ui: ({ title, documentUrl }) => `<!doctype html>
+<title>${title}</title>
+<redoc spec-url="${documentUrl}"></redoc>
+<script type="module" src="https://cdn.redoc.ly/redoc/v3.x/bundles/redoc.standalone.js"></script>`,
+})
+```
+
+`transform` can fill in what the config cannot know, such as the host a request came to:
+
+```ts
+openapiRoutes({
+  transform: (document, { request }) => ({
+    ...document,
+    servers: [{ url: `${request.protocol()}://${request.host()}` }],
+  }),
+})
+```
+
+### Where the document comes from
+
+With `source: 'live'`, each request runs the generator in the app process. The page always matches the routes, with no command to run. The generator reads the TypeScript sources and needs `@adonisjs/assembler`, which the dev server and `node ace test` have.
+
+With `source: 'file'`, the route serves the file `node ace openapi:generate` wrote. In production, the route reads the file once and keeps it in memory. Elsewhere, it reads the file on each request. When the file is missing, the route responds with a `500` error that names `node ace openapi:generate` and the build hook.
+
+### Ship the document with the build
+
+A `node ace build` output has no TypeScript sources, and a production install has no `@adonisjs/assembler`. In production, the page serves the file instead. `node ace add` registers what writes the file and copies it into `build/`:
+
+```ts
+// adonisrc.ts
+export default defineConfig({
+  metaFiles: [{ pattern: 'openapi.json', reloadServer: false }],
+  hooks: {
+    buildStarting: [() => import('@enzopita/adonisjs-openapi/build_hook')],
+  },
+})
+```
+
+The hook runs `node ace openapi:generate` before `node ace build` compiles the app, and `metaFiles` copies `openapi.json` into `build/`. If you change `output` in the config, change the `metaFiles` pattern to match.
+
+Without the hook, you can commit the generated file and keep it in `metaFiles`. Run `node ace openapi:generate` again each time the routes change.
+
+### Protect the page
+
+A browser opens the page with a plain navigation. It sends cookies and HTTP basic credentials, but it has no way to add an `Authorization: Bearer` header. A guard that reads a bearer token, such as the access tokens guard, answers `401` to every visit from a browser. Use a guard that the browser can satisfy:
+
+- The basic auth guard. On a `401`, the browser shows its own login prompt. Serve the page over HTTPS, because basic auth sends the password with every request.
+- The session guard, if the app already has a login page.
+
+The basic auth guard needs an entry in `config/auth.ts`:
+
+```ts
+import { basicAuthGuard, basicAuthUserProvider } from '@adonisjs/auth/basic_auth'
+
+const authConfig = defineConfig({
+  guards: {
+    basic: basicAuthGuard({
+      provider: basicAuthUserProvider({ model: () => import('#models/user') }),
+    }),
+  },
+})
+```
+
+### Content Security Policy
+
+Shield's CSP is off in a new app. If you turn it on, the page needs the directives below on top of `defaultSrc: ["'self'"]`. The page sets Shield's nonce on its scripts, so `@nonce` allows them. Each UI loads in Chromium with no CSP violation under these directives.
+
+| UI           | Directives                                                                                                         |
+| ------------ | ------------------------------------------------------------------------------------------------------------------ |
+| `scalar`     | `scriptSrc: ['@nonce']`, `styleSrc: ["'unsafe-inline'"]`, `fontSrc: ['https://fonts.scalar.com']`                  |
+| `swagger-ui` | `scriptSrc: ['@nonce']`, `styleSrc: ['https://cdn.jsdelivr.net']`, `imgSrc: ['data:']`                             |
+| `redoc`      | `scriptSrc: ['@nonce']`, `styleSrc: ["'unsafe-inline'"]`, `fontSrc: ['data:']`, `imgSrc: ['https://cdn.redoc.ly']` |
+
+Shield applies one policy to every route, so these directives apply to the whole app. A custom `cdn` replaces `https://cdn.jsdelivr.net` with the host it points to.
 
 ## Document an operation
 

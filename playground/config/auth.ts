@@ -1,6 +1,7 @@
 import { defineConfig } from '@adonisjs/auth'
 import { sessionGuard, sessionUserProvider } from '@adonisjs/auth/session'
 import { tokensGuard, tokensUserProvider } from '@adonisjs/auth/access_tokens'
+import { basicAuthGuard, basicAuthUserProvider } from '@adonisjs/auth/basic_auth'
 import type { InferAuthenticators, InferAuthEvents, Authenticators } from '@adonisjs/auth/types'
 
 const authConfig = defineConfig({
@@ -30,6 +31,15 @@ const authConfig = defineConfig({
       useRememberMeTokens: false,
 
       provider: sessionUserProvider({
+        model: () => import('#models/user'),
+      }),
+    }),
+
+    /**
+     * HTTP basic auth, which a browser prompts for, guarding the docs page.
+     */
+    basic: basicAuthGuard({
+      provider: basicAuthUserProvider({
         model: () => import('#models/user'),
       }),
     }),
