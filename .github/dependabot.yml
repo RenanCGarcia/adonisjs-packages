@@ -8,7 +8,15 @@ updates:
     commit-message:
       prefix: "chore(deps)"
       prefix-development: "chore(deps-dev)"
+    ignore:
+      # @adonisjs/assembler and the openapi generator need the compiler API that TypeScript 7 no longer ships.
+      - dependency-name: typescript
+        update-types: ["version-update:semver-major"]
     groups:
+      # Their majors depend on each other and on changesets/action, so they move together.
+      changesets:
+        patterns:
+          - "@changesets/*"
       minor-patch:
         update-types:
           - minor
