@@ -75,6 +75,10 @@ export async function collectRoutes(
         specifier: validator.import.specifier,
         exportName: validator.import.value,
       },
+      controller: route.controller && {
+        path: route.controller.path,
+        method: route.controller.method,
+      },
     }
   })
 }

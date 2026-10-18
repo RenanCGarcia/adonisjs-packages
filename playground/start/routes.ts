@@ -30,6 +30,7 @@ router
         router.get('profile', [controllers.Profile, 'show'])
         router.post('logout', [controllers.AccessTokens, 'destroy'])
         router.put('avatar', [controllers.Avatar, 'update'])
+        router.delete('avatar', [controllers.Avatar, 'destroy'])
       })
       .prefix('account')
       .as('profile')

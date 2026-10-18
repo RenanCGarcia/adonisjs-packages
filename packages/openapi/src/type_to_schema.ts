@@ -13,11 +13,26 @@ const BINARY = new Set(['MultipartFile', 'File', 'Blob'])
 export class TypeToSchema {
   #checker: ts.TypeChecker
   #recursive = new Map<ts.Type, string>()
+  #named: Map<ts.Type, string>
+  #namesBySchema = new Map<string, string>()
   readonly components: Record<string, JsonSchema> = {}
   readonly unsupported = new Set<string>()
 
-  constructor(checker: ts.TypeChecker) {
+  /**
+   * Every named type becomes a component up front: a transformer nested in another
+   * resolves to a different type than its `Data` alias, and is matched by its schema.
+   */
+  constructor(checker: ts.TypeChecker, named = new Map<ts.Type, string>()) {
     this.#checker = checker
+    this.#named = named
+
+    for (const [type, name] of named) {
+      const schema = this.#properties(type, [])
+      const serialized = JSON.stringify(schema)
+      this.components[name] = schema
+
+      if (!this.#namesBySchema.has(serialized)) this.#namesBySchema.set(serialized, name)
+    }
   }
 
   convert(type: ts.Type, stack: ts.Type[] = []): JsonSchema {
@@ -114,9 +129,28 @@ export class TypeToSchema {
   }
 
   #object(type: ts.Type, name: string | undefined, stack: ts.Type[]): JsonSchema {
+    const named = this.#named.get(type)
+
+    if (named) return { $ref: `#/components/schemas/${named}` }
+
     if (stack.includes(type))
       return { $ref: `#/components/schemas/${this.#recursiveName(type, name)}` }
 
+    const schema = this.#properties(type, stack)
+    const ref = this.#recursive.get(type)
+
+    if (ref) {
+      this.components[ref] = schema
+
+      return { $ref: `#/components/schemas/${ref}` }
+    }
+
+    const shared = this.#namesBySchema.get(JSON.stringify(schema))
+
+    return shared ? { $ref: `#/components/schemas/${shared}` } : schema
+  }
+
+  #properties(type: ts.Type, stack: ts.Type[]): JsonSchema {
     const next = [...stack, type]
     const properties: Record<string, JsonSchema> = {}
     const required: string[] = []
@@ -143,14 +177,6 @@ export class TypeToSchema {
     }
 
     if (required.length) schema.required = required
-
-    const ref = this.#recursive.get(type)
-
-    if (ref) {
-      this.components[ref] = schema
-
-      return { $ref: `#/components/schemas/${ref}` }
-    }
 
     return schema
   }

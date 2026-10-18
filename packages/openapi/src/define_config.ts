@@ -9,6 +9,7 @@ export function defineConfig(config: Partial<OpenApiConfig> = {}): OpenApiConfig
     output: 'openapi.json',
     info: { title: 'API', version: '1.0.0' },
     servers: [],
+    tags: [],
     routes: {},
     securitySchemes: {},
     middlewareSecurity: {},

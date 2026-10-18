@@ -7,4 +7,8 @@ export default class AvatarController {
 
     return { name: avatar.clientName, size: avatar.size }
   }
+
+  async destroy({ response }: HttpContext) {
+    return response.noContent()
+  }
 }

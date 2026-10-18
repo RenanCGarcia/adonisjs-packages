@@ -92,19 +92,28 @@ async function validatorSchemas(
   return schemas
 }
 
+const EMPTY_STATUSES = new Set(['204', '205', '304'])
+
+const WITHOUT_BODY =
+  ts.TypeFlags.Any | ts.TypeFlags.Unknown | ts.TypeFlags.Void | ts.TypeFlags.Undefined
+
 function responsesFor(
   route: RouteOperation,
   types: RouteTypes,
   response: ts.Type | undefined,
+  thrown: Record<string, string>,
+  secured: boolean,
   warnings: string[],
 ) {
   const responses: Record<string, OpenApiResponse> = {}
 
-  const describe = (code: string, schema: JsonSchema) => {
-    responses[code] = {
-      description: STATUS_CODES[Number(code)] ?? 'Response',
-      content: { 'application/json': { schema } },
-    }
+  const describe = (code: string, payload?: ts.Type) => {
+    const description = STATUS_CODES[Number(code)] ?? 'Response'
+    const empty = !payload || EMPTY_STATUSES.has(code) || payload.flags & WITHOUT_BODY
+
+    responses[code] = empty
+      ? { description }
+      : { description, content: { 'application/json': { schema: types.schemas.convert(payload) } } }
   }
 
   const members = response?.isUnion() ? response.types : response ? [response] : []
@@ -114,18 +123,19 @@ function responsesFor(
     const payload = types.property(member, '__response')
 
     if (status && payload) {
-      describe(
-        status.isNumberLiteral() ? String(status.value) : 'default',
-        types.schemas.convert(payload),
-      )
+      describe(status.isNumberLiteral() ? String(status.value) : 'default', payload)
     } else if (!(member.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown))) {
-      describe('200', types.schemas.convert(member))
+      describe('200', member)
     }
   }
 
+  for (const [code, description] of Object.entries(thrown)) responses[code] ??= { description }
+
   const validationError = route.validator && types.validationError()
 
-  if (validationError) describe('422', types.schemas.convert(validationError))
+  if (validationError && !responses['422']) describe('422', validationError)
+
+  if (secured && !responses['401']) describe('401')
 
   if (!Object.keys(responses).some(code => code.startsWith('2') || code === 'default')) {
     warnings.push(
@@ -186,9 +196,12 @@ export async function generateDocument(
       return scheme ? [{ [scheme]: [] }] : []
     })
 
+    const { responses: thrown, ...docs } = types.docs(route)
+
     const operation: Omit<OpenApiOperation, 'operationId'> = {
-      tags: [route.name.split('.')[0] ?? route.name],
-      responses: responsesFor(route, types, response, warnings),
+      ...docs,
+      tags: docs.tags ?? [route.name.split('.')[0] ?? route.name],
+      responses: responsesFor(route, types, response, thrown, security.length > 0, warnings),
     }
 
     if (parameters.length) operation.parameters = parameters
@@ -224,6 +237,8 @@ export async function generateDocument(
   }
 
   if (config.servers.length) document.servers = config.servers
+
+  if (config.tags.length) document.tags = config.tags
 
   return { document, warnings }
 }
