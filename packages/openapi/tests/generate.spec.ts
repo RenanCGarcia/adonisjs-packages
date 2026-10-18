@@ -6,14 +6,14 @@ import type { OpenApiDocument } from '../src/types.ts'
 
 const playground = new URL('../../../playground/', import.meta.url)
 const output = 'tmp/openapi.spec.json'
+const run = promisify(execFile)
 
 test.group('openapi:generate on the playground app', group => {
   let document: OpenApiDocument
 
   group.setup(async () => {
-    await promisify(execFile)('node', ['ace', 'openapi:generate', `--output=${output}`], {
-      cwd: playground,
-    })
+    await run('node', ['ace', 'codegen'], { cwd: playground })
+    await run('node', ['ace', 'openapi:generate', `--output=${output}`], { cwd: playground })
     document = JSON.parse(await readFile(new URL(output, playground), 'utf8'))
 
     return () => rm(new URL(output, playground))

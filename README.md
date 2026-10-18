@@ -12,7 +12,7 @@ AdonisJS packages published under the `@enzopita` scope.
 
 ```sh
 pnpm install
-pnpm --filter playground setup:env   # creates playground/.env with an APP_KEY
+pnpm bootstrap   # builds the packages, creates playground/.env and runs its codegen
 pnpm test
 ```
 

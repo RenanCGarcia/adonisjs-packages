@@ -30,7 +30,7 @@
     "dev": "node ace serve --hmr",
     "typecheck": "node ace codegen && tsc --noEmit",
     "openapi": "node ace openapi:generate",
-    "setup:env": "node -e \"require('fs').copyFileSync('.env.example','.env')\" && node ace generate:key"
+    "bootstrap": "node scripts/bootstrap.js && node ace codegen"
   },
   "dependencies": {
     "@adonisjs/auth": "^10.1.0",
