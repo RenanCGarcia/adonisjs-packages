@@ -28,10 +28,9 @@
     "start": "node bin/server.js",
     "build": "node ace build",
     "dev": "node ace serve --hmr",
-    "test": "node ace test",
     "typecheck": "node ace codegen && tsc --noEmit",
     "openapi": "node ace openapi:generate",
-    "setup": "node -e \"require('fs').copyFileSync('.env.example','.env')\" && node ace generate:key"
+    "setup:env": "node -e \"require('fs').copyFileSync('.env.example','.env')\" && node ace generate:key"
   },
   "dependencies": {
     "@adonisjs/auth": "^10.1.0",
