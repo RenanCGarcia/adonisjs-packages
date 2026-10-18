@@ -1,0 +1,22 @@
+packages:
+  - 'packages/*'
+  - 'playground'
+
+catalogMode: strict
+
+catalog:
+  '@adonisjs/assembler': ^8.5.2
+  '@adonisjs/core': ^7.6.0
+  '@adonisjs/tsconfig': ^2.0.0
+  '@japa/assert': ^4.2.0
+  '@japa/runner': ^5.3.0
+  '@poppinss/ts-exec': ^1.4.4
+  '@types/node': '~26.6.5'
+  '@vinejs/vine': ^4.4.0
+  typescript: '~6.0.3'
+
+allowBuilds:
+  '@swc/core': true
+  better-sqlite3: true
+  esbuild: true
+  lefthook: true

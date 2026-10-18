@@ -1,0 +1,14 @@
+node_modules
+build
+dist
+.turbo
+*.log
+.env
+.env.local
+.DS_Store
+.idea
+.vscode/*
+!.vscode/settings.json
+
+# Agent reference repos (pnpm docs:pull)
+/repos

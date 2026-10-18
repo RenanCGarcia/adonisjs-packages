@@ -1,0 +1,59 @@
+{
+  "name": "@enzopita/adonisjs-openapi",
+  "version": "0.0.0",
+  "description": "Generate an OpenAPI document from the routes, validators and transformers of an AdonisJS app",
+  "keywords": [
+    "adonisjs",
+    "openapi",
+    "swagger",
+    "tuyau",
+    "vinejs"
+  ],
+  "license": "MIT",
+  "author": "Enzo Pita <enzo@enzopita.com>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/enzopita/adonisjs-packages.git",
+    "directory": "packages/openapi"
+  },
+  "files": [
+    "build",
+    "!build/bin",
+    "!build/tests"
+  ],
+  "type": "module",
+  "exports": {
+    ".": "./build/index.js",
+    "./commands": "./build/commands/main.js",
+    "./types": "./build/src/types.js"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "scripts": {
+    "build": "rm -rf build && tsc -p tsconfig.build.json && cp -r stubs/config build/stubs/",
+    "test": "pnpm run build && node --import=@poppinss/ts-exec --enable-source-maps bin/test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "typescript": "catalog:"
+  },
+  "devDependencies": {
+    "@adonisjs/assembler": "catalog:",
+    "@adonisjs/core": "catalog:",
+    "@adonisjs/tsconfig": "catalog:",
+    "@japa/assert": "catalog:",
+    "@japa/runner": "catalog:",
+    "@poppinss/ts-exec": "catalog:",
+    "@types/node": "catalog:",
+    "@vinejs/vine": "catalog:"
+  },
+  "peerDependencies": {
+    "@adonisjs/assembler": "^8.5.0",
+    "@adonisjs/core": "^7.6.0"
+  },
+  "engines": {
+    "node": ">=24.0.0"
+  }
+}

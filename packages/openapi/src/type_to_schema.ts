@@ -1,0 +1,170 @@
+import ts from 'typescript'
+import type { JsonSchema } from './types.ts'
+
+const OMITTED = ts.TypeFlags.Undefined | ts.TypeFlags.Void
+
+// `vine.file()` infers `MultipartFile` on the server and `File | Blob` for clients.
+const BINARY = new Set(['MultipartFile', 'File', 'Blob'])
+
+/**
+ * Converts a type the checker resolved into JSON Schema (draft 2020-12, as OpenAPI 3.1 uses).
+ * Serialized output types are plain data, so methods are dropped and dates become strings.
+ */
+export class TypeToSchema {
+  #checker: ts.TypeChecker
+  #recursive = new Map<ts.Type, string>()
+  readonly components: Record<string, JsonSchema> = {}
+  readonly unsupported = new Set<string>()
+
+  constructor(checker: ts.TypeChecker) {
+    this.#checker = checker
+  }
+
+  convert(type: ts.Type, stack: ts.Type[] = []): JsonSchema {
+    const flags = type.flags
+
+    if (flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) return {}
+
+    if (flags & ts.TypeFlags.Never) return { not: {} }
+
+    if (type.isStringLiteral()) return { type: 'string', const: type.value }
+
+    if (type.isNumberLiteral()) return { type: 'number', const: type.value }
+
+    if (flags & ts.TypeFlags.BooleanLiteral)
+      return { type: 'boolean', const: this.#checker.typeToString(type) === 'true' }
+
+    if (flags & (ts.TypeFlags.String | ts.TypeFlags.TemplateLiteral)) return { type: 'string' }
+
+    if (flags & ts.TypeFlags.Number) return { type: 'number' }
+
+    if (flags & ts.TypeFlags.BigInt) return { type: 'integer' }
+
+    if (flags & ts.TypeFlags.Boolean) return { type: 'boolean' }
+
+    if (flags & ts.TypeFlags.Null) return { type: 'null' }
+
+    if (flags & OMITTED) return { not: {} }
+
+    if (type.isUnion()) return this.#union(type, stack)
+
+    const name = (type.aliasSymbol ?? type.getSymbol())?.getName()
+
+    if (name === 'Date' || name === 'DateTime') return { type: 'string', format: 'date-time' }
+
+    if (name && BINARY.has(name)) return { type: 'string', format: 'binary' }
+
+    if (this.#checker.isArrayType(type)) {
+      // SAFETY: isArrayType only holds for TypeReference instances.
+      const [item] = this.#checker.getTypeArguments(type as ts.TypeReference)
+
+      return { type: 'array', items: item ? this.convert(item, stack) : {} }
+    }
+
+    if (this.#checker.isTupleType(type)) {
+      // SAFETY: isTupleType only holds for TypeReference instances.
+      const items = this.#checker
+        .getTypeArguments(type as ts.TypeReference)
+        .map(item => this.convert(item, stack))
+
+      return { type: 'array', prefixItems: items, minItems: items.length, maxItems: items.length }
+    }
+
+    if (flags & ts.TypeFlags.Object || type.isIntersection()) return this.#object(type, name, stack)
+
+    this.unsupported.add(this.#checker.typeToString(type))
+
+    return {}
+  }
+
+  /**
+   * Whether `undefined` is one of the members, which makes an object property optional.
+   */
+  acceptsUndefined(type: ts.Type) {
+    return type.isUnion()
+      ? type.types.some(member => member.flags & OMITTED)
+      : Boolean(type.flags & OMITTED)
+  }
+
+  #union(type: ts.UnionType, stack: ts.Type[]): JsonSchema {
+    const members = type.types.filter(member => !(member.flags & OMITTED))
+    const booleans = members.filter(member => member.flags & ts.TypeFlags.BooleanLiteral)
+
+    const converted = members
+      .filter(member => !(member.flags & ts.TypeFlags.BooleanLiteral))
+      .map(member => this.convert(member, stack))
+
+    if (booleans.length === 2) converted.push({ type: 'boolean' })
+    else converted.push(...booleans.map(member => this.convert(member, stack)))
+
+    const schemas = [...new Map(converted.map(schema => [JSON.stringify(schema), schema])).values()]
+
+    if (schemas.length === 1) return schemas[0]!
+
+    if (schemas.every(schema => 'const' in schema || schema.type === 'null')) {
+      const types = [...new Set(schemas.flatMap(schema => schema.type ?? []))]
+
+      return {
+        type: types.length === 1 ? types[0] : types,
+        enum: schemas.map(schema => schema.const ?? null),
+      }
+    }
+
+    return { anyOf: schemas }
+  }
+
+  #object(type: ts.Type, name: string | undefined, stack: ts.Type[]): JsonSchema {
+    if (stack.includes(type))
+      return { $ref: `#/components/schemas/${this.#recursiveName(type, name)}` }
+
+    const next = [...stack, type]
+    const properties: Record<string, JsonSchema> = {}
+    const required: string[] = []
+
+    for (const property of this.#checker.getPropertiesOfType(type)) {
+      const propertyType = this.#checker.getTypeOfSymbol(property)
+
+      if (propertyType.getCallSignatures().length) continue
+
+      properties[property.getName()] = this.convert(propertyType, next)
+
+      const optional =
+        property.flags & ts.SymbolFlags.Optional || this.acceptsUndefined(propertyType)
+
+      if (!optional) required.push(property.getName())
+    }
+
+    const [index] = this.#checker.getIndexInfosOfType(type)
+
+    const schema: JsonSchema = {
+      type: 'object',
+      properties,
+      additionalProperties: index ? this.convert(index.type, next) : false,
+    }
+
+    if (required.length) schema.required = required
+
+    const ref = this.#recursive.get(type)
+
+    if (ref) {
+      this.components[ref] = schema
+
+      return { $ref: `#/components/schemas/${ref}` }
+    }
+
+    return schema
+  }
+
+  #recursiveName(type: ts.Type, name: string | undefined) {
+    const existing = this.#recursive.get(type)
+
+    if (existing) return existing
+
+    const base = name && !name.startsWith('__') ? name : 'Recursive'
+    const ref = this.components[base] ? `${base}${this.#recursive.size}` : base
+    this.#recursive.set(type, ref)
+    this.components[ref] = {}
+
+    return ref
+  }
+}
