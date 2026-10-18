@@ -34,3 +34,5 @@ jobs:
           commit: "chore: version packages"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Provenance needs the OIDC token only CI has, so it is set here and not in publishConfig.
+          NPM_CONFIG_PROVENANCE: true

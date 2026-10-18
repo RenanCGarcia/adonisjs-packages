@@ -28,8 +28,7 @@
     "./types": "./build/src/types.js"
   },
   "publishConfig": {
-    "access": "public",
-    "provenance": true
+    "access": "public"
   },
   "scripts": {
     "build": "rm -rf build && tsc -p tsconfig.build.json && cp -r stubs/config build/stubs/",
