@@ -30,8 +30,8 @@ router
       .group(() => {
         router.get('profile', [controllers.Profile, 'show'])
         router.post('logout', [controllers.AccessTokens, 'destroy'])
-        router.put('avatar', [controllers.Avatar, 'update'])
-        router.delete('avatar', [controllers.Avatar, 'destroy'])
+        router.put('avatar', [controllers.Avatar, 'update']).use(middleware.tenant())
+        router.delete('avatar', [controllers.Avatar, 'destroy']).use(middleware.tenant())
       })
       .prefix('account')
       .as('profile')

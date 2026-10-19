@@ -190,11 +190,12 @@ export async function generateDocument(
     const query = readsQueryOnly ? fields : input?.properties?.query
     const parameters = parametersFor(route, query, input?.properties?.params)
 
-    const security = route.middleware.flatMap(name => {
-      const scheme = config.middlewareSecurity[name]
+    // Entries of `security` are alternatives, so the schemes a route requires together share one entry.
+    const schemes = route.middleware.flatMap(name => config.middlewareSecurity[name] ?? [])
 
-      return scheme ? [{ [scheme]: [] }] : []
-    })
+    const security: Record<string, string[]>[] = schemes.length
+      ? [Object.fromEntries(schemes.map(scheme => [scheme, []]))]
+      : []
 
     const { responses: thrown, ...docs } = types.docs(route)
 

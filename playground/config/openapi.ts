@@ -6,8 +6,10 @@ export default defineConfig({
   tags: [{ name: 'Users', description: 'Public user profiles' }],
   securitySchemes: {
     accessToken: { type: 'http', scheme: 'bearer' },
+    tenant: { type: 'apiKey', in: 'header', name: 'X-Tenant-Id' },
   },
   middlewareSecurity: {
     auth: 'accessToken',
+    tenant: 'tenant',
   },
 })

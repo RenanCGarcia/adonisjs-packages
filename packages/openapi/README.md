@@ -59,7 +59,7 @@ export default defineConfig({
 - `routes` takes `only` or `except`, with the same matchers as Tuyau's `generateRegistry()`: a substring, a regular expression, or a function of the route name.
 - `info` is the OpenAPI Info Object: `title` and `version`, and optionally `summary`, `description`, `termsOfService`, `contact` and `license`.
 - `tags` is copied to the document's top-level `tags`. Use it to describe the tags operations use and to set their order.
-- `middlewareSecurity` maps a named middleware, such as `middleware.auth()`, to a key of `securitySchemes`. Routes behind it get the scheme in `security` and a `401` response.
+- `middlewareSecurity` maps a named middleware, such as `middleware.auth()`, to a key of `securitySchemes`. Routes behind it get the scheme in `security` and a `401` response. A route behind several mapped middleware, such as `middleware.auth()` and `middleware.tenant()`, requires all their schemes together: they share one Security Requirement Object.
 
 ## Serve a docs page
 
@@ -80,7 +80,11 @@ openapiRoutes().use(middleware.auth({ guards: ['basic'] }))
 
 `openapiRoutes()` returns the route group, so `.use()`, `.domain()`, `.prefix()` and `.as()` work on it. `.as('admin')` names the routes `admin.openapi.ui` and `admin.openapi.document`.
 
-The page loads the document from a URL relative to the page, so it keeps working behind a proxy that serves the app under a path prefix. The generator leaves both routes out of the document, as it does every closure route.
+The page loads the document from a URL relative to the page, so it keeps working behind a proxy that serves the app under a path prefix. The generator leaves both routes out of the document, as it does every closure route. Tuyau keeps named closure routes, so they appear in its client registry. To leave them out, exclude them where `adonisrc.ts` calls `generateRegistry()`:
+
+```ts
+generateRegistry({ routes: { except: [/^openapi\./] } })
+```
 
 ### Turn the page on or off
 
@@ -249,7 +253,7 @@ When `.adonisjs/client/data.d.ts` exists, every type in its `Data` namespace bec
 
 ## How types become schemas
 
-- A route must have a name and a controller handler. Closure routes are skipped, as they are in Tuyau.
+- A route must have a name and a controller handler. Closure routes are skipped.
 - On `GET` routes, the validator fields become query parameters. On other methods they become the body, and the validator's `query` and `params` objects become query and path parameters.
 - A body with a `vine.file()` field is sent as `multipart/form-data`.
 - When VineJS cannot describe a field (a file, a custom rule), the generator uses the field's TypeScript type.
