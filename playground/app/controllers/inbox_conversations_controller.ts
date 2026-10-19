@@ -17,7 +17,7 @@ export default class InboxConversationsController {
       name: 'Playground',
       defaultQueueId: queue.id,
       webhookToken: randomUUID(),
-      credentials: {},
+      credentials: { secret: randomUUID() },
     })
 
     return response.created(channel)

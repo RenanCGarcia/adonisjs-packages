@@ -30,3 +30,7 @@ export const closeValidator = vine.create({
   reason: vine.enum(['manual', 'inactivity', 'bot_completed', 'channel_removed']),
   note: vine.string().trim().optional(),
 })
+
+export const messageValidator = vine.create({
+  text: vine.string().trim().minLength(1),
+})

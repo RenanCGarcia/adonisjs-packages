@@ -62,9 +62,12 @@ router
     router.post('tickets/:id/return', [controllers.InboxTickets, 'requeue'])
     router.post('tickets/:id/close', [controllers.InboxTickets, 'close'])
     router.post('tickets/:id/read', [controllers.InboxTickets, 'read'])
+    router.post('tickets/:id/messages', [controllers.InboxMessages, 'store'])
   })
   .prefix('/inbox')
   .as('inbox')
   .use(middleware.auth())
+
+router.post('/inbox/webhooks/:token', [controllers.InboxWebhooks, 'store']).as('inbox.webhooks')
 
 openapiRoutes().use(middleware.auth({ guards: ['basic'] }))

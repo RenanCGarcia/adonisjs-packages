@@ -72,7 +72,6 @@ export default class extends BaseSchema {
         .onDelete('CASCADE')
       table.text('raw_body').notNullable()
       table.timestamp('received_at').notNullable()
-      table.timestamp('claimed_at').nullable()
       table.timestamp('processed_at').nullable()
     })
 
@@ -205,6 +204,7 @@ export default class extends BaseSchema {
       table.integer('author_id').unsigned().nullable().references('inbox_attendants.id')
       table.string('external_id').nullable()
       table.string('client_ref').nullable().unique()
+      table.string('failure_code').nullable()
       table.timestamp('sent_at').notNullable()
       table.timestamp('dispatched_at').nullable()
 
@@ -212,6 +212,8 @@ export default class extends BaseSchema {
       table.timestamp('updated_at').nullable()
 
       table.unique(['conversation_id', 'external_id'])
+      // Status webhooks find the message by its id at the provider alone.
+      table.index(['external_id'])
     })
   }
 

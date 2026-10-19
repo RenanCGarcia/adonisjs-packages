@@ -71,19 +71,10 @@ export class InboxAttendantSchema extends BaseModel {
 }
 
 export class InboxChannelEventSchema extends BaseModel {
-  static $columns = [
-    'channelId',
-    'claimedAt',
-    'id',
-    'processedAt',
-    'rawBody',
-    'receivedAt',
-  ] as const
+  static $columns = ['channelId', 'id', 'processedAt', 'rawBody', 'receivedAt'] as const
   $columns = InboxChannelEventSchema.$columns
   @column()
   declare channelId: number
-  @column.dateTime()
-  declare claimedAt: DateTime | null
   @column({ isPrimary: true })
   declare id: number
   @column.dateTime()
@@ -169,6 +160,7 @@ export class InboxMessageSchema extends BaseModel {
     'direction',
     'dispatchedAt',
     'externalId',
+    'failureCode',
     'id',
     'sentAt',
     'status',
@@ -192,6 +184,8 @@ export class InboxMessageSchema extends BaseModel {
   declare dispatchedAt: DateTime | null
   @column()
   declare externalId: string | null
+  @column()
+  declare failureCode: string | null
   @column({ isPrimary: true })
   declare id: number
   @column.dateTime()
