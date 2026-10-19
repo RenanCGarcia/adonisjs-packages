@@ -1,25 +1,13 @@
-import { execFile } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import { fileURLToPath } from 'node:url'
-import { promisify } from 'node:util'
 
-import { IgnitorFactory } from '@adonisjs/core/factories'
 import type { ApplicationService } from '@adonisjs/core/types'
-import { defineConfig as defineDatabaseConfig } from '@adonisjs/lucid'
 import { test } from '@japa/runner'
 
 import { adapters } from '../src/adapters/main.ts'
 import { defineConfig, type AuthorizeQuestion } from '../src/define_config.ts'
 import type { Inbox } from '../src/inbox.ts'
 import type { Attendant, ConversationId, InboxEvents, QueueId } from '../src/types.ts'
-
-const playground = new URL('../../../playground/', import.meta.url)
-const run = promisify(execFile)
-
-const model =
-  <T>(path: string): (() => Promise<{ default: T }>) =>
-  () =>
-    import(new URL(`app/models/inbox/${path}.ts`, playground).href)
+import { boot, migratePlayground, playgroundModels } from './helpers/app.ts'
 
 /**
  * Called by `authorize`, after the ticket was read and before it is written, which is where a
@@ -27,54 +15,9 @@ const model =
  */
 let meanwhile: (question: AuthorizeQuestion) => Promise<void> = async () => {}
 
-async function boot(inboxConfig: ReturnType<typeof defineConfig>) {
-  const app: ApplicationService = new IgnitorFactory()
-    .withCoreProviders()
-    .withCoreConfig()
-    .merge({
-      rcFileContents: {
-        providers: [
-          () => import('@adonisjs/lucid/database_provider'),
-          () => import('../providers/inbox_provider.ts'),
-        ],
-      },
-      config: {
-        database: defineDatabaseConfig({
-          connection: 'sqlite',
-          connections: {
-            sqlite: {
-              client: 'better-sqlite3',
-              connection: { filename: fileURLToPath(new URL('tmp/db.sqlite3', playground)) },
-              useNullAsDefault: true,
-            },
-          },
-        }),
-        inbox: inboxConfig,
-      },
-    })
-    .create(playground, { importer: filePath => import(filePath) })
-    .createApp('web')
-
-  await app.init()
-  await app.boot()
-
-  return app
-}
-
 const playgroundConfig = () =>
   defineConfig({
-    models: {
-      attendant: model('attendant'),
-      channel: model('channel'),
-      channelEvent: model('channel_event'),
-      contact: model('contact'),
-      conversation: model('conversation'),
-      message: model('message'),
-      queue: model('queue'),
-      queueMember: model('queue_member'),
-      ticket: model('ticket'),
-      ticketEvent: model('ticket_event'),
-    },
+    models: playgroundModels(),
     bots: ['triage'],
     channels: { fake: adapters.fake() },
     authorize: async question => {
@@ -89,9 +32,7 @@ test.group('ticket writes', group => {
   let inbox: Inbox
 
   group.setup(async () => {
-    await run('node', ['ace', 'migration:run', '--force', '--no-schema-generate'], {
-      cwd: playground,
-    })
+    await migratePlayground()
     app = await boot(playgroundConfig())
     inbox = await app.container.make('inbox')
 
@@ -238,18 +179,7 @@ test.group('ticket writes', group => {
 
 test.group('inbox provider', () => {
   test('a config that leaves a model role out fails the boot', async ({ assert }) => {
-    const { ticket, ...models } = {
-      attendant: model('attendant'),
-      channel: model('channel'),
-      channelEvent: model('channel_event'),
-      contact: model('contact'),
-      conversation: model('conversation'),
-      message: model('message'),
-      queue: model('queue'),
-      queueMember: model('queue_member'),
-      ticket: model('ticket'),
-      ticketEvent: model('ticket_event'),
-    }
+    const { ticket, ...models } = playgroundModels()
 
     // @ts-expect-error a JavaScript config can leave a role out, which only the boot catches.
     const config = defineConfig({ models, bots: [], channels: {} })
