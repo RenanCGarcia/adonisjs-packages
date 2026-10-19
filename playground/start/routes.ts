@@ -47,4 +47,24 @@ router
   })
   .prefix('/api/v1')
 
+router
+  .group(() => {
+    router.post('queues', [controllers.InboxQueues, 'store'])
+    router.post('queues/:id/members', [controllers.InboxQueues, 'addMember'])
+    router.delete('queues/:id/members/:userId', [controllers.InboxQueues, 'removeMember'])
+    router.post('attendants/:userId/deactivate', [controllers.InboxAttendants, 'deactivate'])
+    router.post('channels', [controllers.InboxConversations, 'storeChannel'])
+    router.post('channels/:id/conversations', [controllers.InboxConversations, 'store'])
+    router.post('conversations/:id/tickets', [controllers.InboxConversations, 'openTicket'])
+    router.post('tickets/:id/assume', [controllers.InboxTickets, 'assume'])
+    router.post('tickets/:id/assign', [controllers.InboxTickets, 'assign'])
+    router.post('tickets/:id/transfer', [controllers.InboxTickets, 'transfer'])
+    router.post('tickets/:id/return', [controllers.InboxTickets, 'requeue'])
+    router.post('tickets/:id/close', [controllers.InboxTickets, 'close'])
+    router.post('tickets/:id/read', [controllers.InboxTickets, 'read'])
+  })
+  .prefix('/inbox')
+  .as('inbox')
+  .use(middleware.auth())
+
 openapiRoutes().use(middleware.auth({ guards: ['basic'] }))

@@ -43,6 +43,288 @@ export class AuthAccessTokenSchema extends BaseModel {
   declare updatedAt: DateTime | null
 }
 
+export class InboxAttendantSchema extends BaseModel {
+  static $columns = [
+    'botKey',
+    'createdAt',
+    'deactivatedAt',
+    'id',
+    'kind',
+    'updatedAt',
+    'userId',
+  ] as const
+  $columns = InboxAttendantSchema.$columns
+  @column()
+  declare botKey: string | null
+  @column.dateTime({ autoCreate: true })
+  declare createdAt: DateTime
+  @column.dateTime()
+  declare deactivatedAt: DateTime | null
+  @column({ isPrimary: true })
+  declare id: number
+  @column()
+  declare kind: string
+  @column.dateTime({ autoCreate: true, autoUpdate: true })
+  declare updatedAt: DateTime | null
+  @column()
+  declare userId: number | null
+}
+
+export class InboxChannelEventSchema extends BaseModel {
+  static $columns = [
+    'channelId',
+    'claimedAt',
+    'id',
+    'processedAt',
+    'rawBody',
+    'receivedAt',
+  ] as const
+  $columns = InboxChannelEventSchema.$columns
+  @column()
+  declare channelId: number
+  @column.dateTime()
+  declare claimedAt: DateTime | null
+  @column({ isPrimary: true })
+  declare id: number
+  @column.dateTime()
+  declare processedAt: DateTime | null
+  @column()
+  declare rawBody: string
+  @column.dateTime()
+  declare receivedAt: DateTime
+}
+
+export class InboxChannelSchema extends BaseModel {
+  static $columns = [
+    'archivedAt',
+    'createdAt',
+    'credentials',
+    'defaultQueueId',
+    'id',
+    'name',
+    'provider',
+    'updatedAt',
+    'webhookToken',
+  ] as const
+  $columns = InboxChannelSchema.$columns
+  @column.dateTime()
+  declare archivedAt: DateTime | null
+  @column.dateTime({ autoCreate: true })
+  declare createdAt: DateTime
+  @column()
+  declare credentials: string
+  @column()
+  declare defaultQueueId: number
+  @column({ isPrimary: true })
+  declare id: number
+  @column()
+  declare name: string
+  @column()
+  declare provider: string
+  @column.dateTime({ autoCreate: true, autoUpdate: true })
+  declare updatedAt: DateTime | null
+  @column()
+  declare webhookToken: string
+}
+
+export class InboxContactSchema extends BaseModel {
+  static $columns = ['address', 'channelId', 'createdAt', 'id', 'name', 'updatedAt'] as const
+  $columns = InboxContactSchema.$columns
+  @column()
+  declare address: string
+  @column()
+  declare channelId: number
+  @column.dateTime({ autoCreate: true })
+  declare createdAt: DateTime
+  @column({ isPrimary: true })
+  declare id: number
+  @column()
+  declare name: string | null
+  @column.dateTime({ autoCreate: true, autoUpdate: true })
+  declare updatedAt: DateTime | null
+}
+
+export class InboxConversationSchema extends BaseModel {
+  static $columns = ['channelId', 'contactId', 'createdAt', 'id', 'updatedAt'] as const
+  $columns = InboxConversationSchema.$columns
+  @column()
+  declare channelId: number
+  @column()
+  declare contactId: number
+  @column.dateTime({ autoCreate: true })
+  declare createdAt: DateTime
+  @column({ isPrimary: true })
+  declare id: number
+  @column.dateTime({ autoCreate: true, autoUpdate: true })
+  declare updatedAt: DateTime | null
+}
+
+export class InboxMessageSchema extends BaseModel {
+  static $columns = [
+    'authorId',
+    'body',
+    'clientRef',
+    'conversationId',
+    'createdAt',
+    'direction',
+    'dispatchedAt',
+    'externalId',
+    'id',
+    'sentAt',
+    'status',
+    'ticketId',
+    'updatedAt',
+  ] as const
+  $columns = InboxMessageSchema.$columns
+  @column()
+  declare authorId: number | null
+  @column()
+  declare body: string
+  @column()
+  declare clientRef: string | null
+  @column()
+  declare conversationId: number
+  @column.dateTime({ autoCreate: true })
+  declare createdAt: DateTime
+  @column()
+  declare direction: string
+  @column.dateTime()
+  declare dispatchedAt: DateTime | null
+  @column()
+  declare externalId: string | null
+  @column({ isPrimary: true })
+  declare id: number
+  @column.dateTime()
+  declare sentAt: DateTime
+  @column()
+  declare status: string | null
+  @column()
+  declare ticketId: number | null
+  @column.dateTime({ autoCreate: true, autoUpdate: true })
+  declare updatedAt: DateTime | null
+}
+
+export class InboxQueueMemberSchema extends BaseModel {
+  static $columns = ['attendantId', 'createdAt', 'id', 'queueId', 'updatedAt'] as const
+  $columns = InboxQueueMemberSchema.$columns
+  @column()
+  declare attendantId: number
+  @column.dateTime({ autoCreate: true })
+  declare createdAt: DateTime
+  @column({ isPrimary: true })
+  declare id: number
+  @column()
+  declare queueId: number
+  @column.dateTime({ autoCreate: true, autoUpdate: true })
+  declare updatedAt: DateTime | null
+}
+
+export class InboxQueueSchema extends BaseModel {
+  static $columns = ['createdAt', 'id', 'name', 'updatedAt'] as const
+  $columns = InboxQueueSchema.$columns
+  @column.dateTime({ autoCreate: true })
+  declare createdAt: DateTime
+  @column({ isPrimary: true })
+  declare id: number
+  @column()
+  declare name: string
+  @column.dateTime({ autoCreate: true, autoUpdate: true })
+  declare updatedAt: DateTime | null
+}
+
+export class InboxTicketEventSchema extends BaseModel {
+  static $columns = [
+    'actorId',
+    'actorKind',
+    'actorSource',
+    'createdAt',
+    'data',
+    'id',
+    'note',
+    'ticketId',
+    'type',
+  ] as const
+  $columns = InboxTicketEventSchema.$columns
+  @column()
+  declare actorId: number | null
+  @column()
+  declare actorKind: string
+  @column()
+  declare actorSource: string | null
+  @column.dateTime({ autoCreate: true })
+  declare createdAt: DateTime
+  @column()
+  declare data: string
+  @column({ isPrimary: true })
+  declare id: number
+  @column()
+  declare note: string | null
+  @column()
+  declare ticketId: number
+  @column()
+  declare type: string
+}
+
+export class InboxTicketSchema extends BaseModel {
+  static $columns = [
+    'assignedAt',
+    'assigneeId',
+    'assigneeKind',
+    'botState',
+    'closeReason',
+    'closedAt',
+    'conversationId',
+    'createdAt',
+    'firstResponseAt',
+    'id',
+    'lastActivityAt',
+    'openConversationId',
+    'openedAt',
+    'queueId',
+    'status',
+    'unreadCount',
+    'updatedAt',
+    'version',
+  ] as const
+  $columns = InboxTicketSchema.$columns
+  @column.dateTime()
+  declare assignedAt: DateTime | null
+  @column()
+  declare assigneeId: number | null
+  @column()
+  declare assigneeKind: string | null
+  @column()
+  declare botState: string
+  @column()
+  declare closeReason: string | null
+  @column.dateTime()
+  declare closedAt: DateTime | null
+  @column()
+  declare conversationId: number
+  @column.dateTime({ autoCreate: true })
+  declare createdAt: DateTime
+  @column.dateTime()
+  declare firstResponseAt: DateTime | null
+  @column({ isPrimary: true })
+  declare id: number
+  @column.dateTime()
+  declare lastActivityAt: DateTime
+  @column()
+  declare openConversationId: number | null
+  @column.dateTime()
+  declare openedAt: DateTime
+  @column()
+  declare queueId: number
+  @column()
+  declare status: string
+  @column()
+  declare unreadCount: number
+  @column.dateTime({ autoCreate: true, autoUpdate: true })
+  declare updatedAt: DateTime | null
+  @column()
+  declare version: number
+}
+
 export class UserSchema extends BaseModel {
   static $columns = ['createdAt', 'email', 'fullName', 'id', 'password', 'updatedAt'] as const
   $columns = UserSchema.$columns

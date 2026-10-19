@@ -357,6 +357,9 @@ importers:
       '@adonisjs/shield':
         specifier: ^9.0.0
         version: 9.0.0(4fd15cfee4464b992f39c1b20905c333)
+      '@enzopita/adonisjs-inbox':
+        specifier: workspace:*
+        version: link:../packages/inbox
       '@enzopita/adonisjs-openapi':
         specifier: workspace:*
         version: link:../packages/openapi

@@ -39,6 +39,7 @@
     "@adonisjs/lucid": "catalog:",
     "@adonisjs/session": "^8.1.0",
     "@adonisjs/shield": "^9.0.0",
+    "@enzopita/adonisjs-inbox": "workspace:*",
     "@enzopita/adonisjs-openapi": "workspace:*",
     "@japa/api-client": "^3.2.1",
     "@tuyau/core": "^1.2.2",
