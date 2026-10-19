@@ -1,5 +1,13 @@
 export { configure } from './configure.ts'
 
+export {
+  defineConfig,
+  type AuthorizeQuestion,
+  type InboxConfig,
+  type InferBots,
+  type Ownership,
+} from './src/define_config.ts'
+
 export { InboxError, type InboxErrorCode } from './src/errors.ts'
 
 export { MODEL_ROLES, type ModelRole } from './src/models.ts'
