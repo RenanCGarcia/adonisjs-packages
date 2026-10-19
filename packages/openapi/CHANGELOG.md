@@ -1,5 +1,11 @@
 # @enzopita/adonisjs-openapi
 
+## 0.2.1
+
+### Patch Changes
+
+- [#10](https://github.com/enzopita/adonisjs-packages/pull/10) [`13ee47c`](https://github.com/enzopita/adonisjs-packages/commit/13ee47c271cb6b6266367feee2b97652ceff1342) Thanks [@enzopita](https://github.com/enzopita)! - A route behind several middleware mapped in `middlewareSecurity` now requires all their schemes together, in one Security Requirement Object. Before, each scheme was a separate entry of `security`, so the document listed them as alternatives.
+
 ## 0.2.0
 
 ### Minor Changes
