@@ -1,0 +1,57 @@
+{
+  "name": "@enzopita/adonisjs-inbox",
+  "version": "0.0.0",
+  "description": "A helpdesk inbox runtime for AdonisJS: tickets, queues, human and bot attendants over pluggable channels",
+  "keywords": [
+    "adonisjs",
+    "helpdesk",
+    "inbox",
+    "tickets",
+    "whatsapp"
+  ],
+  "license": "MIT",
+  "author": "Enzo Pita <enzo@enzopita.com>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/enzopita/adonisjs-packages.git",
+    "directory": "packages/inbox"
+  },
+  "files": [
+    "build",
+    "!build/bin",
+    "!build/tests"
+  ],
+  "type": "module",
+  "exports": {
+    ".": "./build/index.js",
+    "./types": "./build/src/types.js"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "rm -rf build && tsc -p tsconfig.build.json",
+    "test": "node --import=@poppinss/ts-exec --enable-source-maps bin/test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@adonisjs/core": "catalog:",
+    "@adonisjs/lucid": "catalog:",
+    "@adonisjs/tsconfig": "catalog:",
+    "@japa/assert": "catalog:",
+    "@japa/runner": "catalog:",
+    "@poppinss/ts-exec": "catalog:",
+    "@types/luxon": "catalog:",
+    "@types/node": "catalog:",
+    "luxon": "catalog:",
+    "typescript": "catalog:"
+  },
+  "peerDependencies": {
+    "@adonisjs/core": "^7.6.0",
+    "@adonisjs/lucid": "^22.4.0",
+    "luxon": "^3.7.0"
+  },
+  "engines": {
+    "node": ">=24.0.0"
+  }
+}
