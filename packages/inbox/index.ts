@@ -1,3 +1,5 @@
+export { configure } from './configure.ts'
+
 export { InboxError, type InboxErrorCode } from './src/errors.ts'
 
 export { MODEL_ROLES, type ModelRole } from './src/models.ts'
@@ -11,5 +13,7 @@ export {
   type PlanContext,
   type TicketOpening,
 } from './src/ticket/plan.ts'
+
+export { stubsRoot } from './stubs/main.ts'
 
 export type * from './src/types.ts'

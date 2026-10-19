@@ -1,0 +1,24 @@
+{{{
+  exports({ to: app.modelsPath('inbox', 'message.ts') })
+}}}
+import { compose } from '@adonisjs/core/helpers'
+import { belongsTo } from '@adonisjs/lucid/orm'
+import type { BelongsTo } from '@adonisjs/lucid/types/relations'
+import { withInboxMessage } from '@enzopita/adonisjs-inbox/mixins'
+import { InboxMessageSchema } from '#database/schema'
+import Attendant from '#models/inbox/attendant'
+import Conversation from '#models/inbox/conversation'
+import Ticket from '#models/inbox/ticket'
+
+export default class Message extends compose(InboxMessageSchema, withInboxMessage()) {
+  static table = 'inbox_messages'
+
+  @belongsTo(() => Conversation)
+  declare conversation: BelongsTo<typeof Conversation>
+
+  @belongsTo(() => Ticket)
+  declare ticket: BelongsTo<typeof Ticket>
+
+  @belongsTo(() => Attendant, { foreignKey: 'authorId' })
+  declare author: BelongsTo<typeof Attendant>
+}
