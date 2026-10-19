@@ -1,5 +1,6 @@
 import type { DateTime } from 'luxon'
 
+import type { RejectionCode } from '../adapters/port.ts'
 import type { AttendantId, ConversationId, MessageId, MessageStatus, TicketId } from '../types.ts'
 import type { InboxModel, Model } from './model.ts'
 
@@ -13,6 +14,7 @@ export interface InboxMessageRow {
   authorId: AttendantId | null
   externalId: string | null
   clientRef: string | null
+  failureCode: RejectionCode | null
   sentAt: DateTime
   dispatchedAt: DateTime | null
 }
@@ -33,6 +35,7 @@ export function withInboxMessage(): <M extends Model>(superclass: M) => InboxMes
       declare authorId: AttendantId | null
       declare externalId: string | null
       declare clientRef: string | null
+      declare failureCode: RejectionCode | null
       declare sentAt: DateTime
       declare dispatchedAt: DateTime | null
     }

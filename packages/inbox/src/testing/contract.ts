@@ -1,3 +1,5 @@
+import assert from 'node:assert/strict'
+
 import { test } from '@japa/runner'
 
 import type { AdapterChannel, ChannelAdapter } from '../adapters/port.ts'
@@ -19,26 +21,26 @@ export function channelAdapterContract(
   channel: AdapterChannel = { id: 1 as ChannelId, credentials: {} },
 ) {
   test.group(`channel adapter contract: ${name}`, () => {
-    test('the registry accepts its capabilities', ({ assert }) => {
+    test('the registry accepts its capabilities', () => {
       const adapter = make()
 
-      assert.strictEqual(new AdapterRegistry(new Map([[name, adapter]])).get(name), adapter)
+      assert.equal(new AdapterRegistry(new Map([[name, adapter]])).get(name), adapter)
     })
 
     test('parse turns a body it cannot read into no events')
       .with(GARBAGE)
-      .run(({ assert }, rawBody) => {
+      .run((_, rawBody) => {
         const events = make().parse(rawBody)
 
-        assert.isArray(events)
-        assert.isTrue(events.every(event => event.type === 'unsupported'))
+        assert.ok(Array.isArray(events))
+        assert.ok(events.every(event => event.type === 'unsupported'))
       })
 
-    test('verify refuses an unsigned request', ({ assert }) => {
-      assert.isFalse(make().verify(channel, unsigned))
+    test('verify refuses an unsigned request', () => {
+      assert.equal(make().verify(channel, unsigned), false)
     })
 
-    test('send rejects once its signal aborted', async ({ assert }) => {
+    test('send rejects once its signal aborted', async () => {
       const signal = AbortSignal.abort()
       const message = { to: { address: '+5511999990000' }, text: 'hi', clientRef: 'contract' }
 

@@ -8,7 +8,6 @@ export interface InboxChannelEventRow {
   channelId: ChannelId
   rawBody: string
   receivedAt: DateTime
-  claimedAt: DateTime | null
   processedAt: DateTime | null
 }
 
@@ -29,7 +28,6 @@ export function withInboxChannelEvent(): <M extends Model>(
       declare channelId: ChannelId
       declare rawBody: string
       declare receivedAt: DateTime
-      declare claimedAt: DateTime | null
       declare processedAt: DateTime | null
     }
 

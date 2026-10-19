@@ -1,4 +1,4 @@
-import { defineConfig, type InferBots } from '@enzopita/adonisjs-inbox'
+import { adapters, defineConfig, tasks, type InferBots } from '@enzopita/adonisjs-inbox'
 
 const inboxConfig = defineConfig({
   models: {
@@ -18,6 +18,19 @@ const inboxConfig = defineConfig({
    * Keys of the bot attendants, the only ones inbox.attendants.bot(key) accepts.
    */
   bots: ['triage'],
+
+  /**
+   * One adapter per provider, keyed by the provider column of your channels.
+   */
+  channels: {
+    fake: adapters.fake(),
+  },
+
+  /**
+   * Where webhooks are ingested and messages dispatched after each commit. Use tasks.queue()
+   * with an @adonisjs/queue job in production.
+   */
+  tasks: tasks.inline(),
 
   // A human can't close a ticket a colleague holds.
   authorize: ({ actor, operation, ticket }) =>

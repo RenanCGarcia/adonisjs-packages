@@ -137,6 +137,23 @@ export type ApplyResult =
 
 export type MessageStatus = 'pending' | 'sent' | 'delivered' | 'read' | 'played' | 'failed'
 
+export interface OutgoingText {
+  text: string
+}
+
+export interface SendMessageOptions {
+  /**
+   * The client's idempotency key. A second send with it returns the message the first stored.
+   */
+  clientRef?: string
+}
+
+export type SendOutcome =
+  | { outcome: 'queued'; messageId: MessageId; ticket: TicketSnapshot }
+  | { outcome: 'rejected'; reason: Rejection }
+
+export type IngestReceipt = 'accepted' | 'unknown_channel' | 'invalid_signature'
+
 /**
  * Augmented into the `EventsList` of `@adonisjs/core/types` by the provider.
  */

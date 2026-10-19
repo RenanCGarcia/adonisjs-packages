@@ -1,6 +1,7 @@
 import type { Database } from '@adonisjs/lucid/database'
 import type { TransactionClientContract } from '@adonisjs/lucid/types/database'
 import type { LucidModel, LucidRow, ModelObject } from '@adonisjs/lucid/types/model'
+import type { DateTime } from 'luxon'
 
 import { InboxError } from '../errors.ts'
 
@@ -10,16 +11,15 @@ import { InboxError } from '../errors.ts'
  */
 export class Conflict extends Error {}
 
+export type Later = (effect: () => Promise<void>) => void
+
 /**
  * Runs `work` in one transaction and the effects it defers, such as emits, after the commit.
  * A savepoint's own `after('commit')` hooks would fire at the savepoint, before the outer commit.
  */
 export async function unitOfWork<T>(
   db: Database,
-  work: (
-    trx: TransactionClientContract,
-    later: (effect: () => Promise<void>) => void,
-  ) => Promise<T>,
+  work: (trx: TransactionClientContract, later: Later) => Promise<T>,
 ) {
   const effects: Array<() => Promise<void>> = []
   const result = await db.transaction(trx => work(trx, effect => effects.push(effect)))
@@ -79,4 +79,12 @@ export function columnsOf(model: LucidModel, row: LucidRow, attributes: ModelObj
  */
 export function affectedRows(result: number[]) {
   return result[0] ?? 0
+}
+
+/**
+ * A time as the dialect stores it. A query builder binds a `DateTime` in a `WHERE` or an
+ * `update` as it is, without the column's `prepare`.
+ */
+export function sqlTime(model: LucidModel, time: DateTime) {
+  return time.toFormat(model.query().client.dialect.dateTimeFormat)
 }

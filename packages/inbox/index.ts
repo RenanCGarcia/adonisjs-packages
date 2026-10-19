@@ -42,4 +42,17 @@ export {
 
 export { stubsRoot } from './stubs/main.ts'
 
+export {
+  DISPATCH_LEASE_MS,
+  SEND_TIMEOUT_MS,
+  TASK_POLICY,
+  tasks,
+  type InboxQueueJob,
+  type InboxTask,
+  type QueueDispatch,
+  type QueueDriverOptions,
+  type TaskDriver,
+  type TaskDriverFactory,
+} from './src/tasks.ts'
+
 export type * from './src/types.ts'

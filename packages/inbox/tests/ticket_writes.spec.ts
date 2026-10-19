@@ -8,6 +8,7 @@ import type { ApplicationService } from '@adonisjs/core/types'
 import { defineConfig as defineDatabaseConfig } from '@adonisjs/lucid'
 import { test } from '@japa/runner'
 
+import { adapters } from '../src/adapters/main.ts'
 import { defineConfig, type AuthorizeQuestion } from '../src/define_config.ts'
 import type { Inbox } from '../src/inbox.ts'
 import type { Attendant, ConversationId, InboxEvents, QueueId } from '../src/types.ts'
@@ -75,6 +76,7 @@ const playgroundConfig = () =>
       ticketEvent: model('ticket_event'),
     },
     bots: ['triage'],
+    channels: { fake: adapters.fake() },
     authorize: async question => {
       await meanwhile(question)
 
@@ -250,7 +252,7 @@ test.group('inbox provider', () => {
     }
 
     // @ts-expect-error a JavaScript config can leave a role out, which only the boot catches.
-    const config = defineConfig({ models, bots: [] })
+    const config = defineConfig({ models, bots: [], channels: {} })
 
     assert.exists(ticket)
     await assert.rejects(() => boot(config), /config.models is missing ticket/)
