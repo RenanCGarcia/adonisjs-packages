@@ -1,5 +1,23 @@
 export { configure } from './configure.ts'
 
+export { adapters } from './src/adapters/main.ts'
+
+export {
+  CAPABILITIES,
+  type AdapterChannel,
+  type AdapterProvider,
+  type Capability,
+  type ChannelAdapter,
+  type ContactIdentity,
+  type DeliveryStatus,
+  type NormalizedEvent,
+  type OutgoingMessage,
+  type RejectionCode,
+  type SendOptions,
+  type SendResult,
+  type WebhookRequest,
+} from './src/adapters/port.ts'
+
 export {
   defineConfig,
   type AuthorizeQuestion,
