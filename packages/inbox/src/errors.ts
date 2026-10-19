@@ -1,8 +1,10 @@
 /**
- * Domain outcomes are result unions. This is only for broken config and programmer errors.
+ * Domain outcomes are result unions. This is only for broken config, rows that break the
+ * migration's CHECK constraints, and programmer errors.
  */
 export type InboxErrorCode =
   | 'E_INBOX_INVALID_CONFIG'
+  | 'E_INBOX_INVALID_ROW'
   | 'E_INBOX_UNKNOWN_PROVIDER'
   | 'E_INBOX_UNKNOWN_BOT'
 
