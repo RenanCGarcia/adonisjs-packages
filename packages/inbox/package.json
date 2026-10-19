@@ -24,6 +24,7 @@
   "type": "module",
   "exports": {
     ".": "./build/index.js",
+    "./mixins": "./build/src/mixins/main.js",
     "./types": "./build/src/types.js"
   },
   "publishConfig": {
