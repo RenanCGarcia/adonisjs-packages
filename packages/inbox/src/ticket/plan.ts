@@ -93,8 +93,8 @@ export function plan(
 /**
  * `plan` over the internal changes too:
  *
- * - `reply`: a human replying to a queued ticket assumes it. The assignee replying only moves the
- *   counters. Anyone else is rejected `not_assignee`.
+ * - `reply`: a human replying to a queued ticket, or to one a bot holds, assumes it. The assignee
+ *   replying only moves the counters. Anyone else is rejected `not_assignee`.
  * - `inbound`: bumps the unread count and the last activity.
  * - `bot_state`: stores the state of the bot that holds the ticket. Any other actor is rejected
  *   `not_assignee`.
@@ -170,8 +170,14 @@ export function questionsFor(
   switch (change.gesture) {
     case 'assume':
       return actorNeedsMembership ? [[actor.id, queueId]] : []
-    case 'reply':
-      return actorNeedsMembership && ticket.state.status === 'queued' ? [[actor.id, queueId]] : []
+    case 'reply': {
+      const current = holder(ticket.state)
+
+      if (!actorNeedsMembership || ticket.state.status === 'closed') return []
+
+      return current === null || current.kind === 'bot' ? [[actor.id, queueId]] : []
+    }
+
     case 'assign':
       return [[change.to, queueId]]
     case 'transfer':
@@ -256,13 +262,11 @@ function reply(
 
   const current = holder(state)
 
-  if (current !== null) {
-    return current.id === actor.id
-      ? settle(ticket, replied(ticket, actor, at), [])
-      : rejected('not_assignee')
+  if (current !== null && current.id === actor.id) {
+    return settle(ticket, replied(ticket, actor, at), [])
   }
 
-  if (actor.kind !== 'human') return rejected('not_assignee')
+  if (actor.kind !== 'human' || current?.kind === 'human') return rejected('not_assignee')
 
   if (!mayHold(actor, state.queueId, context)) return rejected('not_member')
 

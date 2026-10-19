@@ -387,6 +387,17 @@ test.group('planChange / reply', () => {
     ])
   })
 
+  test('a member replying to a ticket a bot holds takes it over', ({ assert }) => {
+    const before = ticket(heldBy(triage))
+    const result = changed(planChange(before, { gesture: 'reply', at: now }, ana, context))
+
+    assert.deepEqual(result.next.state, heldBy(ana))
+    assert.equal(result.next.unreadCount, 0)
+    assert.deepEqual(result.facts, [
+      { fact: 'assignment_changed', from: ref(triage), to: ref(ana), via: 'reply' },
+    ])
+  })
+
   test('the assignee replying only moves the counters', ({ assert }) => {
     const before = ticket(heldBy(ana))
     const result = changed(planChange(before, { gesture: 'reply', at: now }, ana, context))
@@ -439,6 +450,18 @@ test.group('planChange / reply', () => {
     .with([
       { reason: 'not_assignee', label: 'someone else holds it', state: heldBy(ana), actor: bea },
       { reason: 'not_assignee', label: 'a bot on a queued ticket', state: queued(), actor: triage },
+      {
+        reason: 'not_assignee',
+        label: 'a bot on another bot',
+        state: heldBy(survey),
+        actor: triage,
+      },
+      {
+        reason: 'not_member',
+        label: 'a non-member on a bot ticket',
+        state: heldBy(triage),
+        actor: carl,
+      },
       { reason: 'not_assignee', label: 'a system actor', state: heldBy(ana), actor: automation },
       {
         reason: 'not_member',
@@ -554,6 +577,8 @@ test.group('questionsFor', () => {
       { state: queued(), change: { gesture: 'reply', at: now }, actor: ana },
       { state: queued(), change: { gesture: 'reply', at: now }, actor: carl },
       { state: heldBy(ana), change: { gesture: 'reply', at: now }, actor: ana },
+      { state: heldBy(triage), change: { gesture: 'reply', at: now }, actor: ana },
+      { state: heldBy(triage), change: { gesture: 'reply', at: now }, actor: carl },
     ])
     .run(({ assert }, { state, change, actor }) => {
       const before = ticket(state)
