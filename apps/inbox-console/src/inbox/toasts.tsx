@@ -58,7 +58,7 @@ export function Toaster() {
   return (
     <div
       aria-live="polite"
-      className="pointer-events-none fixed top-16 right-4 z-50 flex w-96 flex-col gap-2"
+      className="pointer-events-none fixed bottom-4 left-4 z-50 flex w-96 flex-col gap-2"
     >
       {shown.map(({ id, tone, text, action }) => {
         const { icon: Icon, className } = TONES[tone]
