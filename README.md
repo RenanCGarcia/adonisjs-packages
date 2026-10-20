@@ -28,7 +28,9 @@ For the playground itself, set `DB_CONNECTION=pg` and the `DB_*` variables in `p
 
 ## Inbox console
 
-The playground serves a console for the inbox packages at `/console`. It is one HTML page that calls the playground's JSON routes under `/inbox`. From it you can filter tickets, open one with its messages, events and flow runs, assume, assign, transfer, return, close, reply and mark read. It also creates agents, queues and fake channels, and simulates a contact writing in through the real webhook ingest. A rejected action shows the reason the inbox gave, such as `held_by_other` or `forbidden`.
+`apps/inbox-console` is a React app for attendants, in Portuguese, on top of the playground's JSON routes under `/inbox`. An agent signs in, works the views (Minhas conversas, Não atribuídas, Com bot, Todas abertas, Resolvidas) and the queues, assumes, replies, assigns, transfers, returns and resolves conversations, and manages agents, queues and channels under Ajustes. "Simular cliente" writes in as a contact through the real webhook ingest. A refused action shows why in Portuguese, such as "Esta conversa já está com Ana Souza."
+
+It calls the API through Tuyau and TanStack Query, typed from the playground's generated registry, so `pnpm typecheck` fails when a route or a transformer changes under it. Vite proxies `/inbox` and `/api` to the playground, so there is no CORS to set up.
 
 To run it on PostgreSQL:
 
@@ -39,12 +41,14 @@ cd playground
 # DB_PASSWORD=postgres, DB_DATABASE=playground
 node ace migration:run
 node ace inbox:seed   # queues, six agents, two fake channels and 20 conversations; safe to rerun
-node ace serve --hmr
+cd ..
+pnpm --filter playground dev        # the API on http://localhost:3333
+pnpm --filter inbox-console dev     # the console on http://localhost:5173
 ```
 
-Then open `http://localhost:3333/console` and log in as `ana@inbox.test` with the password `inbox-password`. Every seeded agent uses that password. The "Acting as" menu switches between agents, and it asks for the password of an agent it has no token for.
+Then open `http://localhost:5173` and log in as `ana@inbox.test` with the password `inbox-password`. Every seeded agent uses that password, and the login screen lists them. "Atuando como" switches between agents, and asks for the password of an agent who hasn't signed in on this browser. Set `PLAYGROUND_URL` when the playground isn't on `http://localhost:3333`.
 
-`node ace migration:fresh && node ace inbox:seed` starts over. With the server running, `node scripts/console_e2e.js` drives the console in Chrome through Playwright and saves screenshots to `tmp/console-e2e`. Set `CONSOLE_URL` when the server isn't on `http://localhost:3333`.
+`node ace migration:fresh && node ace inbox:seed` starts over. With both servers running, `pnpm --filter inbox-console e2e` drives the console in Chrome through Playwright and saves screenshots to `apps/inbox-console/tmp/console-e2e`. Set `CONSOLE_URL` when the console isn't on `http://localhost:5173`.
 
 ## Release
 
