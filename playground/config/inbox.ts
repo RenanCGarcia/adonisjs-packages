@@ -26,6 +26,7 @@ const inboxConfig = defineConfig({
    */
   bots: {
     triage: () => import('#bots/triage_bot'),
+    flows: () => import('@enzopita/adonisjs-inbox-flows/bot'),
   },
 
   /**
@@ -38,6 +39,11 @@ const inboxConfig = defineConfig({
       bot: 'triage',
       when: ({ channel }) => channel.provider === 'triage',
     }),
+    // On a flows channel, the flows bot picks the flow from the bindings in config/inbox_flows.ts.
+    automations.assignOnOpen({
+      bot: 'flows',
+      when: ({ channel }) => channel.provider === 'flows',
+    }),
     automations.closeInactive({ after: { hours: 48 } }),
   ],
 
@@ -47,6 +53,7 @@ const inboxConfig = defineConfig({
   channels: {
     fake: adapters.fake(),
     triage: adapters.fake(),
+    flows: adapters.fake(),
   },
 
   /**

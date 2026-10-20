@@ -68,6 +68,26 @@ router
   .as('inbox')
   .use(middleware.auth())
 
+router
+  .group(() => {
+    router.get('catalog', [controllers.InboxFlows, 'catalog'])
+    router.post('/', [controllers.InboxFlows, 'store'])
+    router.get(':id', [controllers.InboxFlows, 'show'])
+    router.put(':id/draft', [controllers.InboxFlows, 'saveDraft'])
+    router.post(':id/validate', [controllers.InboxFlows, 'validate'])
+    router.post(':id/publish', [controllers.InboxFlows, 'publish'])
+    router.get(':id/versions', [controllers.InboxFlows, 'versions'])
+    router.post(':id/versions/:versionId/restore', [controllers.InboxFlows, 'restore'])
+    router.get(':id/bindings', [controllers.InboxFlows, 'bindings'])
+    router.put(':id/bindings', [controllers.InboxFlows, 'setBindings'])
+    router.post('tickets/:id/start', [controllers.InboxFlows, 'start'])
+    router.post('tickets/:id/stop', [controllers.InboxFlows, 'stop'])
+    router.get('tickets/:id/runs', [controllers.InboxFlows, 'runs'])
+  })
+  .prefix('/inbox/flows')
+  .as('inbox.flows')
+  .use(middleware.auth())
+
 router.post('/inbox/webhooks/:token', [controllers.InboxWebhooks, 'store']).as('inbox.webhooks')
 
 openapiRoutes().use(middleware.auth({ guards: ['basic'] }))

@@ -30,6 +30,7 @@ export default defineConfig({
     () => import('@adonisjs/session/commands'),
     () => import('@enzopita/adonisjs-openapi/commands'),
     () => import('@enzopita/adonisjs-inbox/commands'),
+    () => import('@enzopita/adonisjs-inbox-flows/commands'),
   ],
 
   /*
@@ -56,6 +57,7 @@ export default defineConfig({
     () => import('@adonisjs/auth/auth_provider'),
     () => import('#providers/api_provider'),
     () => import('@enzopita/adonisjs-inbox/inbox_provider'),
+    () => import('@enzopita/adonisjs-inbox-flows/inbox_flows_provider'),
   ],
 
   /*

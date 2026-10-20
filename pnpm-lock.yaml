@@ -399,6 +399,9 @@ importers:
       '@enzopita/adonisjs-inbox':
         specifier: workspace:*
         version: link:../packages/inbox
+      '@enzopita/adonisjs-inbox-flows':
+        specifier: workspace:*
+        version: link:../packages/inbox-flows
       '@enzopita/adonisjs-openapi':
         specifier: workspace:*
         version: link:../packages/openapi

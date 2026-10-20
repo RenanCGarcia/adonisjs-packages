@@ -155,6 +155,193 @@ export class InboxConversationSchema extends BaseModel {
   declare updatedAt: DateTime | null
 }
 
+export class InboxFlowBindingSchema extends BaseModel {
+  static $columns = [
+    'channelId',
+    'condition',
+    'createdAt',
+    'flowId',
+    'id',
+    'priority',
+    'queueId',
+    'updatedAt',
+  ] as const
+  $columns = InboxFlowBindingSchema.$columns
+  @column()
+  declare channelId: number | null
+  @column()
+  declare condition: string | null
+  @column.dateTime({ autoCreate: true })
+  declare createdAt: DateTime
+  @column()
+  declare flowId: number
+  @column({ isPrimary: true })
+  declare id: number
+  @column()
+  declare priority: number
+  @column()
+  declare queueId: number | null
+  @column.dateTime({ autoCreate: true, autoUpdate: true })
+  declare updatedAt: DateTime | null
+}
+
+export class InboxFlowEffectSchema extends BaseModel {
+  static $columns = [
+    'attempts',
+    'createdAt',
+    'id',
+    'idempotencyKey',
+    'lastError',
+    'leaseUntil',
+    'nextAttemptAt',
+    'nodeId',
+    'payload',
+    'runId',
+    'settledAt',
+    'status',
+    'ticketId',
+    'type',
+    'updatedAt',
+  ] as const
+  $columns = InboxFlowEffectSchema.$columns
+  @column()
+  declare attempts: number
+  @column.dateTime({ autoCreate: true })
+  declare createdAt: DateTime
+  @column({ isPrimary: true })
+  declare id: number
+  @column()
+  declare idempotencyKey: string
+  @column()
+  declare lastError: string | null
+  @column.dateTime()
+  declare leaseUntil: DateTime | null
+  @column.dateTime()
+  declare nextAttemptAt: DateTime | null
+  @column()
+  declare nodeId: string
+  @column()
+  declare payload: string
+  @column()
+  declare runId: number
+  @column.dateTime()
+  declare settledAt: DateTime | null
+  @column()
+  declare status: string
+  @column()
+  declare ticketId: number
+  @column()
+  declare type: string
+  @column.dateTime({ autoCreate: true, autoUpdate: true })
+  declare updatedAt: DateTime | null
+}
+
+export class InboxFlowRunSchema extends BaseModel {
+  static $columns = [
+    'bindingId',
+    'createdAt',
+    'deadline',
+    'endedAt',
+    'endedDetail',
+    'endedReason',
+    'flowId',
+    'id',
+    'liveTicketId',
+    'revision',
+    'startedById',
+    'status',
+    'ticketId',
+    'updatedAt',
+    'vars',
+    'versionId',
+    'waiting',
+    'wakeAt',
+  ] as const
+  $columns = InboxFlowRunSchema.$columns
+  @column()
+  declare bindingId: number | null
+  @column.dateTime({ autoCreate: true })
+  declare createdAt: DateTime
+  @column.dateTime()
+  declare deadline: DateTime | null
+  @column.dateTime()
+  declare endedAt: DateTime | null
+  @column()
+  declare endedDetail: string | null
+  @column()
+  declare endedReason: string | null
+  @column()
+  declare flowId: number
+  @column({ isPrimary: true })
+  declare id: number
+  @column()
+  declare liveTicketId: number | null
+  @column()
+  declare revision: number
+  @column()
+  declare startedById: number | null
+  @column()
+  declare status: string
+  @column()
+  declare ticketId: number
+  @column.dateTime({ autoCreate: true, autoUpdate: true })
+  declare updatedAt: DateTime | null
+  @column()
+  declare vars: string
+  @column()
+  declare versionId: number
+  @column()
+  declare waiting: string | null
+  @column.dateTime()
+  declare wakeAt: DateTime | null
+}
+
+export class InboxFlowVersionSchema extends BaseModel {
+  static $columns = ['createdAt', 'flowId', 'graph', 'hash', 'id', 'number', 'publishedBy'] as const
+  $columns = InboxFlowVersionSchema.$columns
+  @column.dateTime({ autoCreate: true })
+  declare createdAt: DateTime
+  @column()
+  declare flowId: number
+  @column()
+  declare graph: string
+  @column()
+  declare hash: string
+  @column({ isPrimary: true })
+  declare id: number
+  @column()
+  declare number: number
+  @column()
+  declare publishedBy: string | null
+}
+
+export class InboxFlowSchema extends BaseModel {
+  static $columns = [
+    'createdAt',
+    'draft',
+    'draftRevision',
+    'id',
+    'name',
+    'publishedVersionId',
+    'updatedAt',
+  ] as const
+  $columns = InboxFlowSchema.$columns
+  @column.dateTime({ autoCreate: true })
+  declare createdAt: DateTime
+  @column()
+  declare draft: string
+  @column()
+  declare draftRevision: number
+  @column({ isPrimary: true })
+  declare id: number
+  @column()
+  declare name: string
+  @column()
+  declare publishedVersionId: number | null
+  @column.dateTime({ autoCreate: true, autoUpdate: true })
+  declare updatedAt: DateTime | null
+}
+
 export class InboxMessageSchema extends BaseModel {
   static $columns = [
     'authorId',

@@ -10,7 +10,7 @@ export const memberValidator = vine.create({
 
 export const channelValidator = vine.create({
   queueId: vine.number().withoutDecimals().min(1),
-  provider: vine.enum(['fake', 'triage']).optional(),
+  provider: vine.enum(['fake', 'triage', 'flows']).optional(),
 })
 
 export const conversationValidator = vine.create({
