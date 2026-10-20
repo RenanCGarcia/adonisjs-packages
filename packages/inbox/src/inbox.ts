@@ -146,6 +146,10 @@ interface TicketWrite {
    * is still compared and swapped, so these never land on a ticket that moved.
    */
   within?: (trx: TransactionClientContract, ticket: TicketSnapshot, later: Later) => Promise<void>
+  /**
+   * The ticket's channel, when the caller already read it.
+   */
+  channel?: ChannelRow
 }
 
 type ChannelRow = InstanceType<InboxModelOf<'channel'>>
@@ -294,6 +298,7 @@ export class Inbox {
 
       try {
         result = await this.#write(id, author, {
+          channel,
           decide: () => [{ gesture: 'reply', at: now }],
           authorizeAs: { gesture: 'send' },
           within: (trx, ticket, later) =>
@@ -409,6 +414,7 @@ export class Inbox {
     const ChannelEvent = await this.#config.model('channelEvent')
 
     const event = await ChannelEvent.create({
+      ...this.#config.ownership(channel),
       channelId: channel.id,
       rawBody: request.rawBody,
       receivedAt: DateTime.now(),
@@ -606,7 +612,7 @@ export class Inbox {
           { client: trx },
         )
 
-        await this.#record(trx, row.id, opening.facts, actor, undefined)
+        await this.#record(trx, row.id, channel, opening.facts, actor, undefined)
 
         later(() =>
           this.#emit(() =>
@@ -628,7 +634,7 @@ export class Inbox {
         })
 
         if (planned.steps.length > 0 || planned.sends.length > 0) {
-          await this.#commit(trx, row, planned, later)
+          await this.#commit(trx, row, channel, planned, later)
         }
 
         // The inbound message that opened it follows, and its turn answers it.
@@ -648,7 +654,7 @@ export class Inbox {
   async #write(id: TicketId, actor: Actor, write: TicketWrite): Promise<ApplyResult> {
     const Ticket = await this.#config.model('ticket')
     const automations = write.automations?.list ?? []
-    let channel: ChannelRow | undefined
+    let channel = write.channel
 
     for (let attempt = 0; attempt < (write.version === undefined ? ATTEMPTS : 1); attempt++) {
       const row = await Ticket.findOrFail(id)
@@ -672,9 +678,9 @@ export class Inbox {
 
       let planned = plan
 
-      if (write.automations !== undefined && automations.length > 0) {
-        channel ??= await this.#channelOf(ticket.conversationId)
+      channel ??= await this.#channelOf(ticket.conversationId)
 
+      if (write.automations !== undefined && automations.length > 0) {
         planned = await this.#automate(plan, automations, {
           channel,
           now: write.automations.now,
@@ -687,8 +693,10 @@ export class Inbox {
       }
 
       try {
+        const ticketChannel = channel
+
         await unitOfWork(this.#db, async (trx, later) => {
-          await this.#commit(trx, row, planned, later)
+          await this.#commit(trx, row, ticketChannel, planned, later)
           await write.within?.(trx, planned.next, later)
 
           // An inbound message schedules its own turn, which answers it.
@@ -837,6 +845,7 @@ export class Inbox {
   async #commit(
     trx: TransactionClientContract,
     row: InstanceType<InboxModelOf<'ticket'>>,
+    channel: ChannelRow,
     planned: Planned,
     later: Later,
   ) {
@@ -846,7 +855,14 @@ export class Inbox {
     for (const step of planned.steps) {
       const { change, from, next, facts } = step
 
-      await this.#record(trx, row.id, facts, step.actor, 'note' in change ? change.note : undefined)
+      await this.#record(
+        trx,
+        row.id,
+        channel,
+        facts,
+        step.actor,
+        'note' in change ? change.note : undefined,
+      )
 
       const name = change.gesture
 
@@ -1012,6 +1028,7 @@ export class Inbox {
   async #record(
     trx: TransactionClientContract,
     ticketId: TicketId,
+    channel: ChannelRow,
     facts: TicketFact[],
     actor: Actor,
     note: string | undefined,
@@ -1022,6 +1039,7 @@ export class Inbox {
 
     await TicketEvent.createMany(
       facts.map(fact => ({
+        ...this.#config.ownership(channel),
         ticketId,
         type: fact.fact,
         data: fact,
@@ -1140,6 +1158,7 @@ export class Inbox {
 
       try {
         result = await this.#write(ticket.id, INGEST, {
+          channel,
           decide: () => [{ gesture: 'inbound', sentAt: event.sentAt }],
           automations: { list: this.#automationsOn('message_received'), now: DateTime.now() },
           within: async (trx, current, later) => {
@@ -1500,6 +1519,7 @@ export class Inbox {
 
         try {
           result = await this.#write(ticket.id, attendant, {
+            channel: replyChannel,
             version: run < BOT_RERUNS ? ticket.version : undefined,
             decide: () => changes,
             within: async (trx, next, later) => {

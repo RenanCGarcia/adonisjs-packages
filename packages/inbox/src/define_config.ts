@@ -78,9 +78,9 @@ export interface InboxConfig<Models extends InboxModels, Bots extends Record<str
   authorize?: (question: AuthorizeQuestion) => boolean | Promise<boolean>
 
   /**
-   * Fills your own columns, such as a `tenantId`, on every contact, conversation, ticket and
-   * message the inbox creates from this channel. The values go through `Model.create`, so your
-   * model hooks still run.
+   * Fills your own columns, such as a `tenantId`, on every row the inbox creates from this
+   * channel: its webhooks, contacts, conversations, tickets, ticket events and messages. The
+   * values go through `Model.create`, so your model hooks still run.
    */
   ownership?: (channel: ChannelOf<Models>) => Ownership
 }

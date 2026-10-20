@@ -72,7 +72,7 @@ const inboxConfig = defineConfig({
   authorize: ({ actor, operation, ticket }) =>
     operation.gesture !== 'close' || actor.kind === 'human',
 
-  // Merged into every contact, conversation, ticket and message created from this channel
+  // Merged into every row created from this channel
   ownership: channel => ({ tenantId: channel.tenantId }),
 })
 
@@ -89,7 +89,7 @@ declare module '@enzopita/adonisjs-inbox/types' {
 - `channels` maps each provider to its adapter.
 - `tasks` runs the work after a commit: ingesting a webhook, dispatching a message and running a bot turn. `tasks.inline()` runs it in the process, and a delayed task (a retry, a bot's debounce) waits on a timer that a restart loses. `tasks.queue({ job })` hands it to an `@adonisjs/queue` job whose `execute` calls `inbox.run(this.payload)`.
 - `authorize` runs against the freshly read ticket on every attempt of `inbox.tickets.apply`, and of `inbox.messages.send` with the operation `{ gesture: 'send' }`. Bots, automations and the releases the package does itself skip it, since they are your own code or the package's housekeeping.
-- `ownership` fills your own columns through `Model.create`, so your model hooks still run.
+- `ownership` fills your own columns on every row the inbox creates from a channel: its stored webhooks, contacts, conversations, tickets, ticket events and messages. They go through `Model.create`, so your model hooks still run.
 
 ## Models
 
