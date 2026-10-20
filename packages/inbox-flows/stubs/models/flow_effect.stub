@@ -1,0 +1,16 @@
+{{{
+  exports({ to: app.modelsPath('inbox', 'flow_effect.ts') })
+}}}
+import { compose } from '@adonisjs/core/helpers'
+import { belongsTo } from '@adonisjs/lucid/orm'
+import type { BelongsTo } from '@adonisjs/lucid/types/relations'
+import { withInboxFlowEffect } from '@enzopita/adonisjs-inbox-flows/mixins'
+import { InboxFlowEffectSchema } from '#database/schema'
+import FlowRun from '#models/inbox/flow_run'
+
+export default class FlowEffect extends compose(InboxFlowEffectSchema, withInboxFlowEffect()) {
+  static table = 'inbox_flow_effects'
+
+  @belongsTo(() => FlowRun, { foreignKey: 'runId' })
+  declare run: BelongsTo<typeof FlowRun>
+}

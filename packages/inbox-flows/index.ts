@@ -1,4 +1,12 @@
 export {
+  BINDING_VARIABLES,
+  type Binding,
+  type BindingCondition,
+  type BindingInput,
+  type BindingVariable,
+} from './src/bindings.ts'
+
+export {
   defineEffect,
   defineNode,
   defineNodes,
@@ -33,6 +41,20 @@ export {
 } from './src/define.ts'
 
 export type { FlowBindingId, FlowEffectId, FlowId, FlowRunId, FlowVersionId } from './src/types.ts'
+
+export { InboxFlowsError, type InboxFlowsErrorCode } from './src/errors.ts'
+
+export { FLOWS_MODEL_ROLES, type FlowsModelRole } from './src/models.ts'
+
+export {
+  HUMAN_OWNED,
+  type FlowRun,
+  type LiveRun,
+  type PendingRun,
+  type RunEndReason,
+  type RunningRun,
+  type RunWait,
+} from './src/run.ts'
 
 export { graphHash } from './src/graph_hash.ts'
 

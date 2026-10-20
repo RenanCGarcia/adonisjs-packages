@@ -24,13 +24,14 @@
   "type": "module",
   "exports": {
     ".": "./build/index.js",
-    "./graph": "./build/src/graph/main.js"
+    "./graph": "./build/src/graph/main.js",
+    "./mixins": "./build/src/mixins/main.js"
   },
   "publishConfig": {
     "access": "public"
   },
   "scripts": {
-    "build": "rm -rf build && tsc -p tsconfig.build.json",
+    "build": "rm -rf build && tsc -p tsconfig.build.json && cp -r stubs/migrations stubs/models build/stubs/",
     "test": "pnpm run build && node --max-old-space-size=1024 --import=@poppinss/ts-exec --enable-source-maps bin/test.ts",
     "typecheck": "tsc --noEmit"
   },

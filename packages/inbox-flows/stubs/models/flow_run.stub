@@ -1,0 +1,28 @@
+{{{
+  exports({ to: app.modelsPath('inbox', 'flow_run.ts') })
+}}}
+import { compose } from '@adonisjs/core/helpers'
+import { belongsTo, hasMany } from '@adonisjs/lucid/orm'
+import type { BelongsTo, HasMany } from '@adonisjs/lucid/types/relations'
+import { withInboxFlowRun } from '@enzopita/adonisjs-inbox-flows/mixins'
+import { InboxFlowRunSchema } from '#database/schema'
+import Flow from '#models/inbox/flow'
+import FlowEffect from '#models/inbox/flow_effect'
+import FlowVersion from '#models/inbox/flow_version'
+import Ticket from '#models/inbox/ticket'
+
+export default class FlowRun extends compose(InboxFlowRunSchema, withInboxFlowRun()) {
+  static table = 'inbox_flow_runs'
+
+  @belongsTo(() => Ticket)
+  declare ticket: BelongsTo<typeof Ticket>
+
+  @belongsTo(() => Flow)
+  declare flow: BelongsTo<typeof Flow>
+
+  @belongsTo(() => FlowVersion, { foreignKey: 'versionId' })
+  declare version: BelongsTo<typeof FlowVersion>
+
+  @hasMany(() => FlowEffect, { foreignKey: 'runId' })
+  declare effects: HasMany<typeof FlowEffect>
+}
