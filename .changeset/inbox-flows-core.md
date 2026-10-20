@@ -1,0 +1,5 @@
+---
+'@enzopita/adonisjs-inbox-flows': minor
+---
+
+Add the package with its pure core. `defineNode` defines a node type in one object: a VineJS config schema, defaults, ports, per-field bindings, an optional effect, an `upgrade` for older type versions and a `validate` rule. `go`, `set`, `read` and the effect payload are checked against the node at compile time. `defineNodes` builds the registry, with a serializable catalog that carries each config as JSON Schema plus `x-ui` hints, the effects derived from the nodes, and `check` and `compile`. The built-in nodes are `start`, `message`, `question`, `condition`, `set_variable`, `delay`, `handoff`, `close` and `end`. `runTurn` is the interpreter: it takes the stored run state and an `assigned`, `message` or `wake` trigger and returns what to say, the effects, the next state and the handoff, with a step budget per turn. `checkGraph` in the browser-safe `./graph` entry checks a graph in `draft` or `publish` mode. `graphHash` is the publish identity and ignores layout.
