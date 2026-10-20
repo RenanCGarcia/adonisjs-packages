@@ -49,6 +49,13 @@ router
 
 router
   .group(() => {
+    router.get('tickets', [controllers.InboxTickets, 'index'])
+    router.get('tickets/:id', [controllers.InboxTickets, 'show'])
+    router.get('attendants', [controllers.InboxAttendants, 'index'])
+    router.post('attendants', [controllers.InboxAttendants, 'store'])
+    router.get('queues', [controllers.InboxQueues, 'index'])
+    router.get('channels', [controllers.InboxChannels, 'index'])
+    router.post('channels/:id/simulate-inbound', [controllers.InboxChannels, 'inbound'])
     router.post('queues', [controllers.InboxQueues, 'store'])
     router.post('queues/:id/members', [controllers.InboxQueues, 'addMember'])
     router.delete('queues/:id/members/:userId', [controllers.InboxQueues, 'removeMember'])

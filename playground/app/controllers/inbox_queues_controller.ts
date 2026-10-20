@@ -1,9 +1,20 @@
 import Queue from '#models/inbox/queue'
+import QueueTransformer from '#transformers/queue_transformer'
 import { memberValidator, queueValidator } from '#validators/inbox'
 import type { HttpContext } from '@adonisjs/core/http'
 import inbox from '@enzopita/adonisjs-inbox/services/main'
 
 export default class InboxQueuesController {
+  async index({ serialize }: HttpContext) {
+    const queues = await Queue.query()
+      .withCount('members')
+      .withCount('tickets', tickets => tickets.where('status', 'queued').as('queued'))
+      .withCount('tickets', tickets => tickets.where('status', 'in_progress').as('inProgress'))
+      .orderBy('id')
+
+    return serialize(QueueTransformer.transform(queues))
+  }
+
   async store({ request, response }: HttpContext) {
     const { name } = await request.validateUsing(queueValidator)
 

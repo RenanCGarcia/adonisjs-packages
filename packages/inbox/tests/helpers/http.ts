@@ -90,7 +90,7 @@ export function playgroundUrl(path = '') {
   return `${baseUrl}${path}`
 }
 
-type Body = Record<string, string | number>
+type Body = Record<string, string | number | number[]>
 
 async function call<T>(
   token: string,
@@ -134,6 +134,7 @@ export async function agent() {
   return {
     userId,
     post,
+    get: <T>(path: string) => call<T>(token, 'GET', path),
     del: (path: string) => call<Answer>(token, 'DELETE', path),
     assume: (ticket: Ticket) => post(`/inbox/tickets/${ticket.id}/assume`),
   }

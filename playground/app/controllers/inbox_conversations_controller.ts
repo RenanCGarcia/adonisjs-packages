@@ -9,12 +9,16 @@ import { randomUUID } from 'node:crypto'
 
 export default class InboxConversationsController {
   async storeChannel({ request, response }: HttpContext) {
-    const { queueId, provider = 'fake' } = await request.validateUsing(channelValidator)
+    const {
+      queueId,
+      provider = 'fake',
+      name = 'Playground',
+    } = await request.validateUsing(channelValidator)
     const queue = await Queue.findOrFail(queueId)
 
     const channel = await Channel.create({
       provider,
-      name: 'Playground',
+      name,
       defaultQueueId: queue.id,
       webhookToken: randomUUID(),
       credentials: { secret: randomUUID() },
