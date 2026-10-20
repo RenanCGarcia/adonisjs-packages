@@ -45,12 +45,10 @@ test.group('flow runs', group => {
   }
 
   async function newQueue(name: string) {
-    const [id] = await flowsApp.db
-      .table('inbox_queues')
-      .insert({ name, created_at: '2026-01-05 10:00:00' })
+    const inbox = await flowsApp.app.container.make('inbox')
+    const queue = await (await inbox.model('queue')).create({ name })
 
-    // SAFETY: the id the insert above returned.
-    return id as QueueId
+    return queue.id
   }
 
   test('a contact answers a question and is handed to the queue its answer picks', async ({

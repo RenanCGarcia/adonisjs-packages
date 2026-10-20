@@ -6,7 +6,7 @@ import { test } from '@japa/runner'
 import { adapters } from '../src/adapters/main.ts'
 import { defineConfig, type AuthorizeQuestion } from '../src/define_config.ts'
 import type { Inbox } from '../src/inbox.ts'
-import type { Attendant, ConversationId, InboxEvents, QueueId } from '../src/types.ts'
+import type { Attendant, InboxEvents } from '../src/types.ts'
 import { boot, migratePlayground, playgroundBots, playgroundModels } from './helpers/app.ts'
 
 /**
@@ -44,40 +44,39 @@ test.group('ticket writes', group => {
   })
 
   /**
-   * The queue, channel, contact and conversation are the host's rows, so they are inserted as
-   * they are. The memberships and the ticket go through the inbox.
+   * The queue, channel, contact and conversation are the host's rows, so they are created through
+   * its models. The memberships and the ticket go through the inbox.
    */
   async function ticketIn(...members: Attendant[]) {
-    const db = await app.container.make('lucid.db')
-    const now = '2026-01-05 10:00:00'
-    const [queueId] = await db.table('inbox_queues').insert({ name: 'support', created_at: now })
+    const queue = await (await inbox.model('queue')).create({ name: 'support' })
 
-    const [channelId] = await db.table('inbox_channels').insert({
+    const channel = await (
+      await inbox.model('channel')
+    ).create({
       provider: 'fake',
       name: 'test',
-      default_queue_id: queueId,
-      webhook_token: randomUUID(),
-      credentials: '{}',
-      created_at: now,
+      defaultQueueId: queue.id,
+      webhookToken: randomUUID(),
+      credentials: {},
     })
 
-    const [contactId] = await db
-      .table('inbox_contacts')
-      .insert({ channel_id: channelId, address: randomUUID(), created_at: now })
+    const contact = await (
+      await inbox.model('contact')
+    ).create({
+      channelId: channel.id,
+      address: randomUUID(),
+    })
 
-    const [conversationId] = await db
-      .table('inbox_conversations')
-      .insert({ channel_id: channelId, contact_id: contactId, created_at: now })
+    const conversation = await (
+      await inbox.model('conversation')
+    ).create({
+      channelId: channel.id,
+      contactId: contact.id,
+    })
 
-    // SAFETY: the id the queue insert above returned.
-    const queue = queueId as QueueId
+    for (const member of members) await inbox.queues.addMember(queue.id, member)
 
-    for (const member of members) await inbox.queues.addMember(queue, member)
-
-    // SAFETY: the id the conversation insert above returned.
-    const conversation = conversationId as ConversationId
-
-    const { ticket } = await inbox.tickets.open(conversation, queue, {
+    const { ticket } = await inbox.tickets.open(conversation.id, queue.id, {
       kind: 'system',
       source: 'test',
     })

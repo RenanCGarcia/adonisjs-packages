@@ -9,7 +9,7 @@ import { defineConfig } from '../src/define_config.ts'
 import type { Inbox } from '../src/inbox.ts'
 import { tasks } from '../src/tasks.ts'
 import { FakeChannelAdapter, fakeWebhookBody } from '../src/testing/main.ts'
-import type { MessageId, QueueId, TicketId } from '../src/types.ts'
+import type { MessageId, TicketId } from '../src/types.ts'
 import { boot, migratePlayground, playgroundModels } from './helpers/app.ts'
 
 const fake = new FakeChannelAdapter()
@@ -51,17 +51,17 @@ test.group('outbox', group => {
    */
   async function inboundTicket(provider = 'fake') {
     const db = await app.container.make('lucid.db')
-    const now = '2026-01-05 10:00:00'
     const token = randomUUID()
-    const [queueId] = await db.table('inbox_queues').insert({ name: 'support', created_at: now })
+    const queue = await (await inbox.model('queue')).create({ name: 'support' })
 
-    const [channelId] = await db.table('inbox_channels').insert({
+    const { id: channelId } = await (
+      await inbox.model('channel')
+    ).create({
       provider,
       name: 'test',
-      default_queue_id: queueId,
-      webhook_token: token,
-      credentials: JSON.stringify({ secret: 's3cret' }),
-      created_at: now,
+      defaultQueueId: queue.id,
+      webhookToken: token,
+      credentials: { secret: 's3cret' },
     })
 
     const address = `+55${randomUUID()}`
@@ -87,8 +87,7 @@ test.group('outbox', group => {
 
     const agent = await inbox.attendants.forUser(Math.floor(Math.random() * 1e9))
 
-    // SAFETY: the id the queue insert above returned.
-    await inbox.queues.addMember(queueId as QueueId, agent)
+    await inbox.queues.addMember(queue.id, agent)
 
     // SAFETY: the id of the ticket row the ingest opened.
     return { receipt, address, agent, channelId, token, ticketId: ticket.id as TicketId }
@@ -261,25 +260,27 @@ test.group('outbox', group => {
     const { address, channelId } = await inboundTicket()
     const db = await app.container.make('lucid.db')
 
-    const store = async (externalId: string, receivedAt: string) => {
-      const [id] = await db.table('inbox_channel_events').insert({
-        channel_id: channelId,
-        raw_body: fakeWebhookBody({
+    const store = async (externalId: string, minutes: number) => {
+      const { id } = await (
+        await inbox.model('channelEvent')
+      ).create({
+        channelId,
+        rawBody: fakeWebhookBody({
           type: 'message_received',
           externalId,
           from: { address },
           content: { kind: 'text', text: 'are you there?' },
           sentAt: DateTime.now(),
         }),
-        received_at: receivedAt,
+        receivedAt: DateTime.now().minus({ minutes }),
       })
 
       return id
     }
 
     const [lostId, freshId] = [randomUUID(), randomUUID()]
-    const lost = await store(lostId, await minutesAgo(10))
-    const fresh = await store(freshId, await minutesAgo(0))
+    const lost = await store(lostId, 10)
+    const fresh = await store(freshId, 0)
 
     await inbox.recover()
 
@@ -325,9 +326,13 @@ test.group('outbox', group => {
 
     await db.from('inbox_messages').where('id', result.messageId).update({ sent_at: longAgo })
 
-    const [eventId] = await db
-      .table('inbox_channel_events')
-      .insert({ channel_id: channelId, raw_body: '[]', received_at: longAgo })
+    const { id: eventId } = await (
+      await inbox.model('channelEvent')
+    ).create({
+      channelId,
+      rawBody: '[]',
+      receivedAt: DateTime.now().minus({ days: 2 }),
+    })
 
     const failed: MessageId[] = []
 

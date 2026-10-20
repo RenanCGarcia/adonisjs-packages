@@ -9,7 +9,7 @@ import { adapters } from '../src/adapters/main.ts'
 import { defineConfig } from '../src/define_config.ts'
 import type { Inbox } from '../src/inbox.ts'
 import { fakeWebhookBody } from '../src/testing/main.ts'
-import type { QueueId, TicketId } from '../src/types.ts'
+import type { TicketId } from '../src/types.ts'
 import { boot, migratePlayground, playgroundModels } from './helpers/app.ts'
 
 /**
@@ -81,18 +81,18 @@ test.group('ownership', group => {
 
   test('every row a channel creates carries what ownership returns for it', async ({ assert }) => {
     const db = await app.container.make('lucid.db')
-    const now = '2026-01-05 10:00:00'
     const token = randomUUID()
     const tenant = `tenant-${randomUUID()}`
-    const [queueId] = await db.table('inbox_queues').insert({ name: 'support', created_at: now })
+    const queue = await (await inbox.model('queue')).create({ name: 'support' })
 
-    const [channelId] = await db.table('inbox_channels').insert({
+    const { id: channelId } = await (
+      await inbox.model('channel')
+    ).create({
       provider: 'fake',
       name: tenant,
-      default_queue_id: queueId,
-      webhook_token: token,
-      credentials: JSON.stringify({ secret: 's3cret' }),
-      created_at: now,
+      defaultQueueId: queue.id,
+      webhookToken: token,
+      credentials: { secret: 's3cret' },
     })
 
     await inbox.ingest(token, {
@@ -118,8 +118,7 @@ test.group('ownership', group => {
 
     const agent = await inbox.attendants.forUser(Math.floor(Math.random() * 1e9))
 
-    // SAFETY: the id the queue insert above returned.
-    await inbox.queues.addMember(queueId as QueueId, agent)
+    await inbox.queues.addMember(queue.id, agent)
 
     // SAFETY: the id of the ticket row the ingest opened.
     await inbox.messages.send(ticket.id as TicketId, { kind: 'text', text: 'hi' }, agent)
