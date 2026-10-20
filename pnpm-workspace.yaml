@@ -16,6 +16,7 @@ catalog:
   '@types/node': '~26.6.5'
   '@vinejs/vine': ^4.4.0
   luxon: ^3.7.2
+  pg: ^8.23.1
   typescript: '~6.0.3'
 
 allowBuilds:

@@ -48,6 +48,7 @@
     "@vinejs/vine": "catalog:",
     "better-sqlite3": "^13.0.3",
     "luxon": "catalog:",
+    "pg": "catalog:",
     "reflect-metadata": "^0.2.2"
   },
   "devDependencies": {
