@@ -4,7 +4,7 @@ import { readdir } from 'node:fs/promises'
 import { test } from '@japa/runner'
 import { copyApp, migrateApp } from '@enzopita/adonisjs-inbox/testing'
 
-import { playground } from './playground.ts'
+import { fixture } from './fixture.ts'
 
 function ace(root: URL, ...args: string[]) {
   const { status, stdout, stderr } = spawnSync('node', ['ace', ...args], {
@@ -19,15 +19,15 @@ const migrationsOf = async (root: URL) =>
   (await readdir(new URL('database/migrations/', root))).sort()
 
 test.group('migrations', group => {
-  // A copy's migration:fresh drops every table on a shared pg database, so the playground's own
+  // A copy's migration:fresh drops every table on a shared pg database, so the fixture's own
   // tables come back for the groups after this one.
-  group.teardown(() => migrateApp(playground))
+  group.teardown(() => migrateApp(fixture))
 
   test('flows:migrations publishes what the app lacks, once, and --check tells', async ({
     assert,
     cleanup,
   }) => {
-    const copy = await copyApp(playground, file => !file.includes('_inbox_flows_'))
+    const copy = await copyApp(fixture, file => !file.includes('_inbox_flows_'))
     cleanup(() => {
       ace(copy.root, 'migration:reset', '--force')
 
@@ -58,8 +58,8 @@ test.group('migrations', group => {
     assert.equal(tick.exitCode, 0, tick.output)
   })
 
-  test('the playground has every flows migration', async ({ assert }) => {
-    const check = ace(playground, 'flows:migrations', '--check')
+  test('the fixture has every flows migration', async ({ assert }) => {
+    const check = ace(fixture, 'flows:migrations', '--check')
 
     assert.equal(check.exitCode, 0, check.output)
   })

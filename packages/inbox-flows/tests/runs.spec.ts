@@ -3,7 +3,7 @@ import type { QueueId, TicketId } from '@enzopita/adonisjs-inbox'
 import { channelIn, eventually } from '@enzopita/adonisjs-inbox/testing'
 
 import { graph } from './helpers.ts'
-import { bootFlows, fake, SYSTEM, type FlowsApp } from './playground.ts'
+import { bootFlows, fake, SYSTEM, type FlowsApp } from './fixture.ts'
 
 /**
  * Asks the age as a number, then transfers adults to `sales` and returns the rest.

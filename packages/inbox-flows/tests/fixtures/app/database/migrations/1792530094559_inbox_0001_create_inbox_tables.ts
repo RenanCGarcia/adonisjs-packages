@@ -1,0 +1,237 @@
+import { BaseSchema } from '@adonisjs/lucid/schema'
+
+export default class extends BaseSchema {
+  async up() {
+    this.schema.createTable('inbox_queues', table => {
+      table.increments('id')
+      table.string('name').notNullable()
+
+      table.timestamp('created_at').notNullable()
+      table.timestamp('updated_at').nullable()
+    })
+
+    this.schema.createTable('inbox_attendants', table => {
+      table.increments('id')
+      table.string('kind').notNullable()
+      // Match the type of your users' primary key.
+      table.integer('user_id').unsigned().nullable().unique()
+      table.string('bot_key').nullable().unique()
+      table.timestamp('deactivated_at').nullable()
+
+      table.timestamp('created_at').notNullable()
+      table.timestamp('updated_at').nullable()
+
+      table.check(
+        "(kind = 'human' AND user_id IS NOT NULL AND bot_key IS NULL) OR (kind = 'bot' AND bot_key IS NOT NULL AND user_id IS NULL)",
+        [],
+        'inbox_attendants_identity',
+      )
+    })
+
+    this.schema.createTable('inbox_queue_members', table => {
+      table.increments('id')
+      table
+        .integer('queue_id')
+        .unsigned()
+        .notNullable()
+        .references('inbox_queues.id')
+        .onDelete('CASCADE')
+      table
+        .integer('attendant_id')
+        .unsigned()
+        .notNullable()
+        .references('inbox_attendants.id')
+        .onDelete('CASCADE')
+
+      table.timestamp('created_at').notNullable()
+      table.timestamp('updated_at').nullable()
+
+      table.unique(['queue_id', 'attendant_id'])
+    })
+
+    this.schema.createTable('inbox_channels', table => {
+      table.increments('id')
+      table.string('provider').notNullable()
+      table.string('name').notNullable()
+      table.integer('default_queue_id').unsigned().notNullable().references('inbox_queues.id')
+      table.string('webhook_token').notNullable().unique()
+      table.text('credentials').notNullable()
+      // A provider reached through webhooks alone never leaves 'connected'.
+      table.string('status').notNullable().defaultTo('connected')
+      table.timestamp('archived_at').nullable()
+
+      table.timestamp('created_at').notNullable()
+      table.timestamp('updated_at').nullable()
+    })
+
+    this.schema.createTable('inbox_channel_events', table => {
+      table.increments('id')
+      table
+        .integer('channel_id')
+        .unsigned()
+        .notNullable()
+        .references('inbox_channels.id')
+        .onDelete('CASCADE')
+      table.text('raw_body').notNullable()
+      table.timestamp('received_at').notNullable()
+      table.timestamp('processed_at').nullable()
+      table.timestamp('failed_at').nullable()
+    })
+
+    this.schema.createTable('inbox_contacts', table => {
+      table.increments('id')
+      table
+        .integer('channel_id')
+        .unsigned()
+        .notNullable()
+        .references('inbox_channels.id')
+        .onDelete('CASCADE')
+      table.string('address').notNullable()
+      table.string('name').nullable()
+
+      table.timestamp('created_at').notNullable()
+      table.timestamp('updated_at').nullable()
+
+      table.unique(['channel_id', 'address'])
+    })
+
+    this.schema.createTable('inbox_conversations', table => {
+      table.increments('id')
+      table
+        .integer('channel_id')
+        .unsigned()
+        .notNullable()
+        .references('inbox_channels.id')
+        .onDelete('CASCADE')
+      table
+        .integer('contact_id')
+        .unsigned()
+        .notNullable()
+        .references('inbox_contacts.id')
+        .onDelete('CASCADE')
+
+      table.timestamp('created_at').notNullable()
+      table.timestamp('updated_at').nullable()
+
+      table.unique(['channel_id', 'contact_id'])
+    })
+
+    this.schema.createTable('inbox_tickets', table => {
+      table.increments('id')
+      table
+        .integer('conversation_id')
+        .unsigned()
+        .notNullable()
+        .references('inbox_conversations.id')
+        .onDelete('CASCADE')
+      // The conversation id while open, NULL once closed. A plain unique index then keeps one
+      // open ticket per conversation on every database, because NULLs never collide.
+      table.integer('open_conversation_id').unsigned().nullable().unique()
+      table.integer('queue_id').unsigned().notNullable().references('inbox_queues.id')
+      table.integer('assignee_id').unsigned().nullable().references('inbox_attendants.id')
+      // A copy of the assignee's kind, which never changes, so reading a ticket needs no join.
+      table.string('assignee_kind').nullable()
+      table.string('status').notNullable()
+      table.string('close_reason').nullable()
+      table.integer('version').notNullable().defaultTo(0)
+      table.text('bot_state').notNullable()
+      table.integer('unread_count').notNullable().defaultTo(0)
+      table.timestamp('opened_at').notNullable()
+      table.timestamp('assigned_at').nullable()
+      table.timestamp('first_response_at').nullable()
+      table.timestamp('last_activity_at').notNullable()
+      table.timestamp('closed_at').nullable()
+
+      table.timestamp('created_at').notNullable()
+      table.timestamp('updated_at').nullable()
+
+      table.index(['status', 'last_activity_at'])
+      table.index(['assignee_id', 'status'])
+
+      // These mirror the TicketState sum type, so every stored row parses.
+      table.check(
+        "(status = 'queued' AND assignee_id IS NULL) OR (status = 'in_progress' AND assignee_id IS NOT NULL) OR status = 'closed'",
+        [],
+        'inbox_tickets_assignee',
+      )
+      table.check(
+        "(assignee_id IS NULL AND assignee_kind IS NULL) OR (assignee_id IS NOT NULL AND assignee_kind IN ('human', 'bot'))",
+        [],
+        'inbox_tickets_assignee_kind',
+      )
+      table.check(
+        "(status IN ('queued', 'in_progress') AND open_conversation_id = conversation_id AND close_reason IS NULL AND closed_at IS NULL) OR (status = 'closed' AND open_conversation_id IS NULL AND close_reason IS NOT NULL AND closed_at IS NOT NULL)",
+        [],
+        'inbox_tickets_open',
+      )
+    })
+
+    this.schema.createTable('inbox_ticket_events', table => {
+      table.increments('id')
+      table
+        .integer('ticket_id')
+        .unsigned()
+        .notNullable()
+        .references('inbox_tickets.id')
+        .onDelete('CASCADE')
+      table.string('type').notNullable()
+      table.text('data').notNullable()
+      table.string('actor_kind').notNullable()
+      table.integer('actor_id').unsigned().nullable().references('inbox_attendants.id')
+      table.string('actor_source').nullable()
+      table.text('note').nullable()
+
+      table.timestamp('created_at').notNullable()
+
+      table.index(['ticket_id', 'created_at'])
+
+      table.check(
+        "(actor_kind IN ('human', 'bot') AND actor_id IS NOT NULL AND actor_source IS NULL) OR (actor_kind = 'system' AND actor_id IS NULL AND actor_source IS NOT NULL)",
+        [],
+        'inbox_ticket_events_actor',
+      )
+    })
+
+    this.schema.createTable('inbox_messages', table => {
+      table.increments('id')
+      table
+        .integer('conversation_id')
+        .unsigned()
+        .notNullable()
+        .references('inbox_conversations.id')
+        .onDelete('CASCADE')
+      table.integer('ticket_id').unsigned().nullable().references('inbox_tickets.id')
+      table.string('direction').notNullable()
+      // What 'body' holds depends on the kind, which is only 'text' so far.
+      table.string('kind').notNullable()
+      table.text('body').notNullable()
+      table.string('status').nullable()
+      table.integer('author_id').unsigned().nullable().references('inbox_attendants.id')
+      table.string('external_id').nullable()
+      table.string('client_ref').nullable().unique()
+      table.string('failure_code').nullable()
+      table.timestamp('sent_at').notNullable()
+      table.timestamp('dispatched_at').nullable()
+
+      table.timestamp('created_at').notNullable()
+      table.timestamp('updated_at').nullable()
+
+      table.unique(['conversation_id', 'external_id'])
+      // Status webhooks find the message by its id at the provider alone.
+      table.index(['external_id'])
+    })
+  }
+
+  async down() {
+    this.schema.dropTable('inbox_messages')
+    this.schema.dropTable('inbox_ticket_events')
+    this.schema.dropTable('inbox_tickets')
+    this.schema.dropTable('inbox_conversations')
+    this.schema.dropTable('inbox_contacts')
+    this.schema.dropTable('inbox_channel_events')
+    this.schema.dropTable('inbox_channels')
+    this.schema.dropTable('inbox_queue_members')
+    this.schema.dropTable('inbox_attendants')
+    this.schema.dropTable('inbox_queues')
+  }
+}

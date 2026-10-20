@@ -7,7 +7,7 @@ import type { TaskDriverFactory, TicketId } from '@enzopita/adonisjs-inbox'
 import { channelIn } from '@enzopita/adonisjs-inbox/testing'
 
 import { graph } from './helpers.ts'
-import { bootFlows, fake, playground, type FlowsApp } from './playground.ts'
+import { bootFlows, fake, fixture, type FlowsApp } from './fixture.ts'
 
 const run = promisify(execFile)
 
@@ -92,14 +92,14 @@ test.group('flows:tick', group => {
     assert.deepEqual(await flowsApp.flows.runs.forTicket(ticketId), runs)
   })
 
-  test('node ace flows:tick in the playground does the same, once', async ({ assert }) => {
+  test('node ace flows:tick in the fixture does the same, once', async ({ assert }) => {
     const ticketId = await waitingOnADelay()
 
     await sleep(1100)
 
-    const first = await run('node', ['ace', 'flows:tick'], { cwd: playground })
+    const first = await run('node', ['ace', 'flows:tick'], { cwd: fixture })
     const runs = await flowsApp.flows.runs.forTicket(ticketId)
-    const second = await run('node', ['ace', 'flows:tick'], { cwd: playground })
+    const second = await run('node', ['ace', 'flows:tick'], { cwd: fixture })
 
     assert.deepEqual(await bodies(ticketId), ['Back?'])
     assert.containsSubset(runs, [{ status: 'running', wait: { waiting: { node: 'ask' } } }])

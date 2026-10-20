@@ -6,7 +6,7 @@ import { DateTime } from 'luxon'
 
 import { EFFECT_POLICY, type FlowGraph } from '../index.ts'
 import { graph } from './helpers.ts'
-import { bootFlows, effects, fake, MAX_STEPS, type FlowsApp } from './playground.ts'
+import { bootFlows, effects, fake, MAX_STEPS, type FlowsApp } from './fixture.ts'
 
 /**
  * Runs the effect node `effect`, then asks a question so the run waits.

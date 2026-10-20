@@ -9,7 +9,7 @@ import { channelIn, modelsIn } from '@enzopita/adonisjs-inbox/testing'
 
 import type { FlowGraph, JsonObject } from '../index.ts'
 import { graph } from './helpers.ts'
-import { bootFlows, fake, flowModelsIn, playground, type FlowsApp } from './playground.ts'
+import { bootFlows, fake, flowModelsIn, fixture, type FlowsApp } from './fixture.ts'
 
 /**
  * Runs a task right away and loses every delayed one, so only a tick sends a wake.
@@ -47,7 +47,7 @@ const TENANTED = {
 
 type Role = keyof typeof TENANTED
 
-const loaders = { ...modelsIn(playground), ...flowModelsIn(playground) }
+const loaders = { ...modelsIn(fixture), ...flowModelsIn(fixture) }
 
 /**
  * The model of `role` with the host's tenant column and the create hook that fills it.

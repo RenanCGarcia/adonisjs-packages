@@ -30,7 +30,10 @@ import {
 } from '../index.ts'
 import type { InboxFlows } from '../src/inbox_flows.ts'
 
-export const playground = new URL('../../../playground/', import.meta.url)
+/**
+ * A host app, set up by `node ace configure` for the inbox, then for the flows.
+ */
+export const fixture = new URL('fixtures/app/', import.meta.url)
 
 export const SYSTEM: Actor = { kind: 'system', source: 'test' }
 
@@ -140,7 +143,7 @@ const validatePublish = ({ flowId }: PublishCheck) =>
     : []
 
 /**
- * The playground booted in this process with the flows provider, the flows bot on `flows`
+ * The fixture booted in this process with the flows provider, the flows bot on `flows`
  * channels, the fake adapter, and the `note` and `notify` effect nodes.
  */
 export async function bootFlows(
@@ -150,12 +153,12 @@ export async function bootFlows(
     models?: Partial<ReturnType<typeof modelsIn> & FlowsModels>
   } = {},
 ) {
-  await migrateApp(playground)
+  await migrateApp(fixture)
 
   const app = await bootApp(
-    playground,
+    fixture,
     defineInboxConfig({
-      models: { ...modelsIn(playground), ...options.models },
+      models: { ...modelsIn(fixture), ...options.models },
       bots: { flows: () => import('../src/bot.ts') },
       automations: [
         automations.assignOnOpen({
@@ -172,7 +175,7 @@ export async function bootFlows(
       config: {
         inbox_flows: defineConfig({
           bot: 'flows',
-          models: { ...flowModelsIn(playground), ...options.models },
+          models: { ...flowModelsIn(fixture), ...options.models },
           nodes: defineNodes([...builtins, note, notify]),
           debounce: { milliseconds: 0 },
           maxSteps: MAX_STEPS,

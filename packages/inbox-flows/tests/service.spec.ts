@@ -4,7 +4,7 @@ import { channelIn } from '@enzopita/adonisjs-inbox/testing'
 
 import type { FlowGraph } from '../index.ts'
 import { graph } from './helpers.ts'
-import { bootFlows, fake, refusedFlows, SYSTEM, type FlowsApp } from './playground.ts'
+import { bootFlows, fake, refusedFlows, SYSTEM, type FlowsApp } from './fixture.ts'
 
 function says(text: string): FlowGraph {
   return graph({
