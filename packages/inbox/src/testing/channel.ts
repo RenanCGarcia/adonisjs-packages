@@ -4,28 +4,30 @@ import type { ApplicationService } from '@adonisjs/core/types'
 import { DateTime } from 'luxon'
 
 import { fakeWebhookBody } from '../adapters/fake.ts'
-import type { QueueId, TicketId } from '../types.ts'
+import type { TicketId } from '../types.ts'
 
 /**
- * A channel on a fresh queue, inserted as the host's rows, and a contact writing in through the
+ * A channel on a fresh queue, created through the host's models, and a contact writing in through the
  * real webhook entry.
  */
 export async function channelIn(app: ApplicationService, provider = 'fake') {
   const db = await app.container.make('lucid.db')
   const inbox = await app.container.make('inbox')
-  const now = '2026-01-05 10:00:00'
   const token = randomUUID()
   const address = `+55${randomUUID()}`
-  const [queueId] = await db.table('inbox_queues').insert({ name: 'support', created_at: now })
+  const Queue = await inbox.model('queue')
+  const Channel = await inbox.model('channel')
+  const queue = await Queue.create({ name: 'support' })
 
-  const [channelId] = await db.table('inbox_channels').insert({
+  const channel = await Channel.create({
     provider,
     name: 'test',
-    default_queue_id: queueId,
-    webhook_token: token,
-    credentials: JSON.stringify({ secret: 's3cret' }),
-    created_at: now,
+    defaultQueueId: queue.id,
+    webhookToken: token,
+    credentials: { secret: 's3cret' },
   })
+
+  const channelId = channel.id
 
   const write = (text: string) =>
     inbox.ingest(token, {
@@ -52,8 +54,7 @@ export async function channelIn(app: ApplicationService, provider = 'fake') {
     return row.id as TicketId
   }
 
-  // SAFETY: the id the queue insert above returned.
-  return { channelId, queueId: queueId as QueueId, token, address, write, openTicket }
+  return { channelId, queueId: queue.id, token, address, write, openTicket }
 }
 
 /**
