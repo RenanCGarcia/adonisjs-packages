@@ -3,11 +3,13 @@ import type { ApplicationService, ConfigProvider } from '@adonisjs/core/types'
 
 import type { AdapterProvider, ChannelAdapter } from './adapters/port.ts'
 import { AdapterRegistry } from './adapters/registry.ts'
+import type { Automation } from './automations.ts'
+import type { Bot, BotLoader } from './bots.ts'
 import { InboxError } from './errors.ts'
 import type { InboxModelOf } from './mixins/main.ts'
 import { MODEL_ROLES, type ModelRole } from './models.ts'
 import { tasks, type TaskDriverFactory } from './tasks.ts'
-import type { Actor, Gesture, TicketSnapshot } from './types.ts'
+import type { Actor, Gesture, JsonValue, TicketSnapshot } from './types.ts'
 
 type Lazy<T> = () => Promise<{ default: T }>
 
@@ -32,13 +34,19 @@ export interface AuthorizeQuestion {
  */
 export type Ownership = Partial<Record<string, string | number | null>>
 
-export interface InboxConfig<Models extends InboxModels, Bots extends readonly string[]> {
+export interface InboxConfig<Models extends InboxModels, Bots extends Record<string, BotLoader>> {
   models: Models
 
   /**
-   * Keys of the bot attendants. `inbox.attendants.bot(key)` only accepts these.
+   * The bot attendants, by key, each a lazily imported class implementing `Bot`.
+   * `inbox.attendants.bot(key)` and the automations only accept these keys.
    */
   bots: Bots
+
+  /**
+   * Run on their trigger, in order. Each sees the ticket the ones before it left.
+   */
+  automations?: ReadonlyArray<Automation<NoInfer<Extract<keyof Bots, string>>>>
 
   /**
    * The adapter of each provider, keyed by the `provider` column of your channels.
@@ -46,8 +54,8 @@ export interface InboxConfig<Models extends InboxModels, Bots extends readonly s
   channels: Record<string, AdapterProvider>
 
   /**
-   * Where the work after a commit runs: ingesting a webhook and dispatching a message. Defaults
-   * to `tasks.inline()`.
+   * Where the work after a commit runs: ingesting a webhook, dispatching a message and running a
+   * bot turn. Defaults to `tasks.inline()`.
    */
   tasks?: TaskDriverFactory
 
@@ -76,7 +84,11 @@ export interface InboxConfig<Models extends InboxModels, Bots extends readonly s
 }
 
 export interface ResolvedInboxConfig {
-  bots: ReadonlySet<string>
+  /**
+   * Each bot, made through the container on first use.
+   */
+  bots: ReadonlyMap<string, () => Promise<Bot<JsonValue>>>
+  automations: ReadonlyArray<Automation<string>>
   model<R extends ModelRole>(role: R): Promise<InboxModelOf<R>>
   authorize: (question: AuthorizeQuestion) => boolean | Promise<boolean>
   ownership: (channel: InstanceType<InboxModelOf<'channel'>>) => Ownership
@@ -85,17 +97,17 @@ export interface ResolvedInboxConfig {
   contactKey: (address: string, provider: string) => string
 }
 
-export type InferBots<T extends { bots: readonly string[] }> = { [K in T['bots'][number]]: true }
+export type InferBots<T extends { bots: object }> = { [K in keyof T['bots']]: true }
 
 export function defineConfig<
   const Models extends InboxModels,
-  const Bots extends readonly string[],
+  const Bots extends Record<string, BotLoader>,
 >(config: InboxConfig<Models, Bots>): ConfigProvider<ResolvedInboxConfig> & { bots: Bots } {
   return { ...configProvider.create(async app => resolve(config, app)), bots: config.bots }
 }
 
-async function resolve(
-  config: InboxConfig<InboxModels, readonly string[]>,
+async function resolve<Bots extends Record<string, BotLoader>>(
+  config: InboxConfig<InboxModels, Bots>,
   app: ApplicationService,
 ): Promise<ResolvedInboxConfig> {
   const missing = MODEL_ROLES.filter(role => config.models[role] === undefined)
@@ -122,8 +134,26 @@ async function resolve(
     adapters.set(provider, resolved)
   }
 
+  const bots = new Map<string, () => Promise<Bot<JsonValue>>>()
+
+  for (const [key, loader] of Object.entries(config.bots)) {
+    let made: Promise<Bot<JsonValue>> | undefined
+
+    bots.set(
+      key,
+      () =>
+        (made ??= loader()
+          .then(({ default: BotClass }) => app.container.make(BotClass))
+          .catch(error => {
+            made = undefined
+            throw error
+          })),
+    )
+  }
+
   return {
-    bots: new Set(config.bots),
+    bots,
+    automations: config.automations ?? [],
     async model(role) {
       const { default: model } = await config.models[role]()
 

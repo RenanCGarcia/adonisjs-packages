@@ -7,7 +7,7 @@ import { adapters } from '../src/adapters/main.ts'
 import { defineConfig, type AuthorizeQuestion } from '../src/define_config.ts'
 import type { Inbox } from '../src/inbox.ts'
 import type { Attendant, ConversationId, InboxEvents, QueueId } from '../src/types.ts'
-import { boot, migratePlayground, playgroundModels } from './helpers/app.ts'
+import { boot, migratePlayground, playgroundBots, playgroundModels } from './helpers/app.ts'
 
 /**
  * Called by `authorize`, after the ticket was read and before it is written, which is where a
@@ -18,7 +18,7 @@ let meanwhile: (question: AuthorizeQuestion) => Promise<void> = async () => {}
 const playgroundConfig = () =>
   defineConfig({
     models: playgroundModels(),
-    bots: ['triage'],
+    bots: playgroundBots(),
     channels: { fake: adapters.fake() },
     authorize: async question => {
       await meanwhile(question)
@@ -182,7 +182,7 @@ test.group('inbox provider', () => {
     const { ticket, ...models } = playgroundModels()
 
     // @ts-expect-error a JavaScript config can leave a role out, which only the boot catches.
-    const config = defineConfig({ models, bots: [], channels: {} })
+    const config = defineConfig({ models, bots: {}, channels: {} })
 
     assert.exists(ticket)
     await assert.rejects(() => boot(config), /config.models is missing ticket/)

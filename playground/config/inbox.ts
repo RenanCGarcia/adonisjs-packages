@@ -1,4 +1,10 @@
-import { adapters, defineConfig, tasks, type InferBots } from '@enzopita/adonisjs-inbox'
+import {
+  adapters,
+  automations,
+  defineConfig,
+  tasks,
+  type InferBots,
+} from '@enzopita/adonisjs-inbox'
 
 const inboxConfig = defineConfig({
   models: {
@@ -15,20 +21,37 @@ const inboxConfig = defineConfig({
   },
 
   /**
-   * Keys of the bot attendants, the only ones inbox.attendants.bot(key) accepts.
+   * The bot attendants by key, each a class implementing Bot, such as
+   * triage: () => import('#bots/triage_bot')
    */
-  bots: ['triage'],
+  bots: {
+    triage: () => import('#bots/triage_bot'),
+  },
+
+  /**
+   * Run in order when a ticket opens, a message arrives or node ace inbox:tick runs, such as
+   * automations.closeInactive({ after: { hours: 48 } })
+   */
+  automations: [
+    // Contacts writing in on a triage channel start with the triage bot.
+    automations.assignOnOpen({
+      bot: 'triage',
+      when: ({ channel }) => channel.provider === 'triage',
+    }),
+    automations.closeInactive({ after: { hours: 48 } }),
+  ],
 
   /**
    * One adapter per provider, keyed by the provider column of your channels.
    */
   channels: {
     fake: adapters.fake(),
+    triage: adapters.fake(),
   },
 
   /**
-   * Where webhooks are ingested and messages dispatched after each commit. Use tasks.queue()
-   * with an @adonisjs/queue job in production.
+   * Where webhooks are ingested, messages dispatched and bot turns run after each commit. Use
+   * tasks.queue() with an @adonisjs/queue job in production.
    */
   tasks: tasks.inline(),
 

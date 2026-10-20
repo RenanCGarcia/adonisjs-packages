@@ -31,6 +31,10 @@ export function playgroundModels(): InboxModels {
   }
 }
 
+export function playgroundBots() {
+  return { triage: () => import(new URL('app/bots/triage_bot.ts', playground).href) }
+}
+
 export async function migratePlayground() {
   await run('node', ['ace', 'migration:run', '--force', '--no-schema-generate'], {
     cwd: playground,

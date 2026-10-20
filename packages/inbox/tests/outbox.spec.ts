@@ -28,7 +28,7 @@ test.group('outbox', group => {
     app = await boot(
       defineConfig({
         models: playgroundModels(),
-        bots: [],
+        bots: {},
         channels: { fake: adapters.fake(fake), receive_only: adapters.fake(receiveOnly) },
         tasks: tasks.inline(),
         authorize: ({ operation }) => allowSends || operation.gesture !== 'send',

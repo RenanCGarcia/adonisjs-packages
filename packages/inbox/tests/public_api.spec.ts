@@ -3,6 +3,7 @@ import { DateTime } from 'luxon'
 
 import * as inbox from '../index.ts'
 import type { Attendant, AttendantId, ConversationId, QueueId, TicketId } from '../index.ts'
+import { playgroundBots, playgroundModels } from './helpers/app.ts'
 
 test.group('public api', () => {
   test('the root leaves the internal ticket changes out', ({ assert }) => {
@@ -39,5 +40,25 @@ test.group('public api', () => {
     })
 
     assert.exists(forged)
+  })
+
+  test('an automation naming a bot outside config.bots fails to compile', ({ assert }) => {
+    const config = inbox.defineConfig({
+      models: playgroundModels(),
+      bots: playgroundBots(),
+      channels: {},
+      automations: [
+        inbox.automations.assignOnOpen({ bot: 'triage' }),
+        // @ts-expect-error `nope` is not a key of config.bots.
+        inbox.automations.assignOnOpen({ bot: 'nope' }),
+        inbox.defineAutomation({
+          name: 'greet_and_assign',
+          on: 'ticket_opened',
+          decide: () => [{ effect: 'assign_bot', bot: 'triage' }],
+        }),
+      ],
+    })
+
+    assert.properties(config.bots, ['triage'])
   })
 })

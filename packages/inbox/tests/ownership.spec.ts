@@ -55,7 +55,7 @@ test.group('ownership', group => {
           ticket: owned('ticket'),
           message: owned('message'),
         },
-        bots: [],
+        bots: {},
         channels: { fake: adapters.fake() },
         ownership: channel => ({ tenantId: channel.name }),
       }),

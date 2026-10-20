@@ -26,6 +26,27 @@ export {
 } from './src/adapters/port.ts'
 
 export {
+  automations,
+  defineAutomation,
+  type Automation,
+  type CandidateFilter,
+  type Effect,
+  type EventAutomation,
+  type TickAutomation,
+  type TicketMoment,
+} from './src/automations.ts'
+
+export type {
+  Bot,
+  BotClass,
+  BotHandoff,
+  BotLoader,
+  BotReply,
+  BotTurn,
+  InboundMessage,
+} from './src/bots.ts'
+
+export {
   defineConfig,
   type AuthorizeQuestion,
   type InboxConfig,
