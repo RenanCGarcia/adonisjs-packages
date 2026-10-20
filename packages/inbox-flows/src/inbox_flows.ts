@@ -272,9 +272,10 @@ export class InboxFlows {
       const Flow = await this.#runtime.model('flow')
       const FlowBinding = await this.#runtime.model('flowBinding')
 
-      await Flow.findOrFail(id)
-
       const rows = await this.#runtime.db.transaction(async trx => {
+        // Concurrent sets take turns on the flow's row. Otherwise each one's delete, under READ
+        // COMMITTED, misses the rows the others insert, and the flow keeps all their bindings.
+        await Flow.query({ client: trx }).where('id', id).forUpdate().firstOrFail()
         await FlowBinding.query({ client: trx }).where('flowId', id).delete()
 
         return FlowBinding.createMany(
