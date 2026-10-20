@@ -3,6 +3,7 @@ import type { ApplicationService } from '@adonisjs/core/types'
 import type {} from '@adonisjs/lucid/database_provider'
 import type {} from '@enzopita/adonisjs-inbox/inbox_provider'
 
+import FlowsBot from '../src/bot.ts'
 import type { ResolvedFlowsConfig } from '../src/define_config.ts'
 import { InboxFlowsError } from '../src/errors.ts'
 import { InboxFlows } from '../src/inbox_flows.ts'
@@ -45,6 +46,11 @@ export default class InboxFlowsProvider {
 
     this.app.container.singleton('inboxFlows', async resolver => {
       return new InboxFlows(await resolver.make(FlowsRuntime))
+    })
+
+    // The inbox makes `config.bots` through the container, so this is how its bot gets the runtime.
+    this.app.container.bind(FlowsBot, async resolver => {
+      return new FlowsBot(await resolver.make(FlowsRuntime))
     })
   }
 

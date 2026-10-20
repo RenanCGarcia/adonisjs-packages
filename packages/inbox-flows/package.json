@@ -1,7 +1,7 @@
 {
   "name": "@enzopita/adonisjs-inbox-flows",
   "version": "0.0.0",
-  "description": "Deterministic chat flows for @enzopita/adonisjs-inbox: node registry, graph checks and a pure interpreter",
+  "description": "Deterministic chat flows for @enzopita/adonisjs-inbox: node registry, graph checks, versioned flows and the bot that runs them",
   "keywords": [
     "adonisjs",
     "chatbot",
@@ -24,6 +24,7 @@
   "type": "module",
   "exports": {
     ".": "./build/index.js",
+    "./bot": "./build/src/bot.js",
     "./graph": "./build/src/graph/main.js",
     "./mixins": "./build/src/mixins/main.js",
     "./inbox_flows_provider": "./build/providers/inbox_flows_provider.js",
