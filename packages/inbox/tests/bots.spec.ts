@@ -158,6 +158,34 @@ test.group('bot turns', group => {
     )
   })
 
+  test('a turn carries the channel and the contact of its ticket', async ({ assert }) => {
+    const channel = await channelIn(app)
+
+    await channel.write('hello')
+
+    const ticketId = await channel.openTicket()
+    const db = await app.container.make('lucid.db')
+
+    const conversation = await db
+      .from('inbox_conversations')
+      .where('channel_id', channel.channelId)
+      .firstOrFail()
+
+    const seen: Array<Pick<BotTurn<JsonValue>, 'channel' | 'contactId'>> = []
+
+    script = async ({ channel: on, contactId, state }) => {
+      seen.push({ channel: on, contactId })
+
+      return { kind: 'silent', state }
+    }
+
+    await handToBot(ticketId)
+
+    assert.deepEqual(seen, [
+      { channel: { id: channel.channelId, provider: 'fake' }, contactId: conversation.contact_id },
+    ])
+  })
+
   test('a turn whose ticket a human assumed meanwhile is dropped', async ({ assert }) => {
     const channel = await channelIn(app)
 

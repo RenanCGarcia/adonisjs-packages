@@ -1,6 +1,14 @@
 import type { DateTime, DurationLike } from 'luxon'
 
-import type { Gesture, JsonValue, MessageContent, MessageId, TicketSnapshot } from './types.ts'
+import type {
+  ChannelId,
+  ContactId,
+  Gesture,
+  JsonValue,
+  MessageContent,
+  MessageId,
+  TicketSnapshot,
+} from './types.ts'
 
 /**
  * An inbound message a bot turn answers.
@@ -17,6 +25,11 @@ export interface BotTurn<State extends JsonValue> {
    */
   trigger: 'assigned' | 'message'
   ticket: TicketSnapshot
+  /**
+   * The channel the ticket's conversation is on, and so the one its replies go out through.
+   */
+  channel: { id: ChannelId; provider: string }
+  contactId: ContactId
   /**
    * The inbound messages since the last reply by an attendant, human or bot, oldest first. An
    * automation's message or an echo from the phone answers nothing.

@@ -1402,6 +1402,9 @@ export class Inbox {
 
     const { attendant, bot } = found
     const Ticket = await this.#config.model('ticket')
+    const Conversation = await this.#config.model('conversation')
+    const Channel = await this.#config.model('channel')
+    let conversation: InstanceType<InboxModelOf<'conversation'>> | undefined
     let channel: ChannelRow | undefined
     let committed = false
 
@@ -1415,12 +1418,18 @@ export class Inbox {
 
         if (run === 0 && !this.#turnIsDue(task.trigger, ticket, unanswered)) return
 
+        conversation ??= await Conversation.findOrFail(ticket.conversationId)
+        channel ??= await Channel.findOrFail(conversation.channelId)
+
+        const { provider } = channel
         const stored = ticket.botState[attendant.id]
         const now = DateTime.now()
 
         const reply = await bot.turn({
           trigger: task.trigger.kind,
           ticket,
+          channel: { id: channel.id, provider },
+          contactId: conversation.contactId,
           unanswered,
           state: stored === undefined ? bot.initialState() : stored,
           now,
@@ -1430,9 +1439,6 @@ export class Inbox {
           return await this.#retry(task, Duration.fromDurationLike(reply.retryIn).toMillis())
         }
 
-        channel ??= await this.#channelOf(ticket.conversationId)
-
-        const { provider } = channel
         const messages = reply.kind === 'reply' ? reply.messages : []
 
         const sendable = messages.filter(({ kind }) =>
