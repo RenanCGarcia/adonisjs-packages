@@ -25,6 +25,7 @@
   "exports": {
     ".": "./build/index.js",
     "./bot": "./build/src/bot.js",
+    "./commands": "./build/commands/main.js",
     "./graph": "./build/src/graph/main.js",
     "./mixins": "./build/src/mixins/main.js",
     "./inbox_flows_provider": "./build/providers/inbox_flows_provider.js",

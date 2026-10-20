@@ -1,3 +1,5 @@
+export { configure } from './configure.ts'
+
 export {
   BINDING_VARIABLES,
   type Binding,
@@ -77,6 +79,8 @@ export {
 } from './src/run.ts'
 
 export { EFFECT_POLICY, type DeliveryOutcome } from './src/runtime.ts'
+
+export { stubsRoot } from './stubs/main.ts'
 
 export { graphHash } from './src/graph_hash.ts'
 
