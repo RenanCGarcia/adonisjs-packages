@@ -37,17 +37,14 @@ interface List {
 
 interface Detail {
   status: number
-  data: {
-    ticket: Row & {
-      messages: Array<{
-        direction: string
-        text: string
-        status: string | null
-        author: { name: string } | null
-      }>
-      events: Array<{ type: string; actor: { kind: string; name: string } }>
-    }
-    runs: unknown[]
+  data: Row & {
+    messages: Array<{
+      direction: string
+      text: string
+      status: string | null
+      author: { name: string } | null
+    }>
+    events: Array<{ type: string; actor: { kind: string; name: string } }>
   }
 }
 
@@ -92,8 +89,7 @@ test.group('the console API', group => {
     const { writeIn } = await inbox(admin)
 
     const written = await writeIn('+5511900000001', 'Maria Silva', 'meu pedido atrasou')
-    const detail = await admin.get<Detail>(`/inbox/tickets/${written.ticketId}`)
-    const { ticket } = detail.data
+    const { data: ticket } = await admin.get<Detail>(`/inbox/tickets/${written.ticketId}`)
 
     assert.equal(written.status, 202)
     assert.equal(written.receipt, 'accepted')
@@ -118,7 +114,7 @@ test.group('the console API', group => {
     const { ticketId } = await writeIn(`+55${randomUUID()}`, 'Joana', 'oi')
 
     await admin.post(`/inbox/tickets/${ticketId}/messages`, { text: 'olá, Joana' })
-    const { ticket } = (await admin.get<Detail>(`/inbox/tickets/${ticketId}`)).data
+    const { data: ticket } = await admin.get<Detail>(`/inbox/tickets/${ticketId}`)
     const me = await attendantOf(admin, admin.userId)
 
     assert.equal(ticket.status, 'in_progress')
@@ -266,7 +262,7 @@ test.group('the console API', group => {
       headers: { authorization: `Bearer ${data.token}` },
     })
 
-    const { ticket } = (await admin.get<Detail>(`/inbox/tickets/${ticketId}`)).data
+    const { data: ticket } = await admin.get<Detail>(`/inbox/tickets/${ticketId}`)
 
     assert.equal(created.status, 201)
     assert.deepEqual(

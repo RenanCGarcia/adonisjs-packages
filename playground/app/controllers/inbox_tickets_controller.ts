@@ -10,7 +10,6 @@ import {
 import type { HttpContext } from '@adonisjs/core/http'
 import type { ModelQueryBuilderContract } from '@adonisjs/lucid/types/model'
 import inbox from '@enzopita/adonisjs-inbox/services/main'
-import inboxFlows from '@enzopita/adonisjs-inbox-flows/services/main'
 import type { AttendantId, Gesture } from '@enzopita/adonisjs-inbox/types'
 import type { Infer } from '@vinejs/vine/types'
 
@@ -127,10 +126,7 @@ export default class InboxTicketsController {
       events.orderBy('id').preload('actor', actor => actor.preload('user')),
     )
 
-    return serialize({
-      ticket: TicketTransformer.transform(ticket).useVariant('forDetail'),
-      runs: await inboxFlows.runs.forTicket(ticket.id),
-    })
+    return serialize(TicketTransformer.transform(ticket).useVariant('forDetail'))
   }
 
   async assume(ctx: HttpContext) {
