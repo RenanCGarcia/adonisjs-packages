@@ -304,6 +304,59 @@ test.group('outbox', group => {
     )
   })
 
+  test('recover gives up on work older than a day instead of queueing it again', async ({
+    assert,
+  }) => {
+    const { agent, channelId, ticketId } = await inboundTicket()
+    const db = await app.container.make('lucid.db')
+    const emitter = await app.container.make('emitter')
+
+    fake.respond = async () => {
+      throw new Error('connection refused')
+    }
+
+    const result = await inbox.messages.send(ticketId, { kind: 'text', text: 'Stale' }, agent)
+
+    if (result.outcome !== 'queued') throw new Error(`the send was ${result.outcome}`)
+
+    fake.respond = async () => ({ status: 'accepted', externalId: randomUUID() })
+
+    const longAgo = await minutesAgo(2 * 24 * 60)
+
+    await db.from('inbox_messages').where('id', result.messageId).update({ sent_at: longAgo })
+
+    const [eventId] = await db
+      .table('inbox_channel_events')
+      .insert({ channel_id: channelId, raw_body: '[]', received_at: longAgo })
+
+    const failed: MessageId[] = []
+
+    const listener = async ({ messageId, status }: { messageId: MessageId; status: string }) => {
+      if (status === 'failed') failed.push(messageId)
+    }
+
+    emitter.on('inbox:message_status_changed', listener)
+
+    try {
+      await inbox.recover()
+    } finally {
+      emitter.off('inbox:message_status_changed', listener)
+    }
+
+    const again = await inbox.recover()
+    const event = await db.from('inbox_channel_events').where('id', eventId).firstOrFail()
+
+    assert.deepInclude(await messageRow(result.messageId), {
+      status: 'failed',
+      failure_code: 'expired',
+    })
+    assert.include(failed, result.messageId)
+    assert.isNull(event.processed_at)
+    assert.isNotNull(event.failed_at)
+    assert.lengthOf(fake.sends, 1)
+    assert.deepEqual(again.gaveUp, { channelEvents: 0, messages: 0 })
+  })
+
   test('a send authorize refuses is forbidden and stores nothing', async ({ assert }) => {
     const { agent, ticketId } = await inboundTicket()
     const db = await app.container.make('lucid.db')

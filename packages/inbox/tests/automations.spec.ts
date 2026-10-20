@@ -1,5 +1,6 @@
 import type { ApplicationService } from '@adonisjs/core/types'
 import { test } from '@japa/runner'
+import { DateTime } from 'luxon'
 
 import { adapters } from '../src/adapters/main.ts'
 import { automations, defineAutomation, type TicketMoment } from '../src/automations.ts'
@@ -187,5 +188,36 @@ test.group('automations', group => {
       sent().map(content => content.text),
       ['Got it.', 'Hi, I am the bot.', 'Got it.', 'Hi, I am the bot.'],
     )
+  })
+
+  test('closeInactive closes only stale tickets, and a second tick changes nothing', async ({
+    assert,
+  }) => {
+    const db = await app.container.make('lucid.db')
+    const stale = await channelIn(app, 'idle')
+    const fresh = await channelIn(app, 'idle')
+
+    await stale.write('hello')
+    await fresh.write('hello')
+
+    const staleId = await stale.openTicket()
+    const freshId = await fresh.openTicket()
+
+    await db
+      .from('inbox_tickets')
+      .where('id', staleId)
+      .update({
+        last_activity_at: DateTime.now()
+          .minus({ days: 3 })
+          .toFormat(db.connection().dialect.dateTimeFormat),
+      })
+
+    const first = await inbox.tick()
+    const second = await inbox.tick()
+
+    assert.include(await ticketRow(staleId), { status: 'closed', close_reason: 'inactivity' })
+    assert.include(await ticketRow(freshId), { status: 'queued' })
+    assert.isAtLeast(first.automations.close_inactive?.changed ?? 0, 1)
+    assert.deepEqual(second.automations.close_inactive, { candidates: 0, changed: 0 })
   })
 })
