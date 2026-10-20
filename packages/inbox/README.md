@@ -141,7 +141,7 @@ A channel adapter implements `ChannelAdapter`: `verify` and `parse` a webhook, a
 
 Ingest writes an inbound message as the system actor `ingest`. A ticket it opens runs the `ticket_opened` automations in the opening transaction, and the message runs the `message_received` ones in its own write.
 
-`@enzopita/adonisjs-inbox/testing` exports `FakeChannelAdapter`, `fakeWebhookBody` and `channelAdapterContract`, the Japa suite every adapter should pass. For specs that drive a real app, such as a package's playground, it also exports `bootApp(appRoot, inboxConfig)`, which boots the app in the test process on its SQLite file in `tmp/db.sqlite3`, `migrateApp(appRoot)`, `modelsIn(appRoot)` for the models `configure` writes, `channelIn(app)`, which inserts a queue and a fake channel and writes in as a contact through the webhook entry, and `eventually(condition)`, which waits on a delayed task.
+`@enzopita/adonisjs-inbox/testing` exports `FakeChannelAdapter`, `fakeWebhookBody` and `channelAdapterContract`, the Japa suite every adapter should pass. For specs that drive a real app, such as a package's fixture app, it also exports `bootApp(appRoot, inboxConfig)`, which boots the app in the test process on the connection its `config/database.ts` picks, `migrateApp(appRoot)`, `modelsIn(appRoot)` for the models `configure` writes, `channelIn(app)`, which inserts a queue and a fake channel and writes in as a contact through the webhook entry, and `eventually(condition)`, which waits on a delayed task.
 
 ## Bots
 
