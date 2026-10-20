@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto'
 import type { EmitterService, LoggerService } from '@adonisjs/core/types'
 import type { Database } from '@adonisjs/lucid/database'
 import type { TransactionClientContract } from '@adonisjs/lucid/types/database'
-import { DateTime, Duration } from 'luxon'
+import { DateTime, Duration, type DurationLike } from 'luxon'
 
 import type { ContactIdentity, NormalizedEvent, WebhookRequest } from './adapters/port.ts'
 import { whereCandidates, type Automation, type Effect } from './automations.ts'
@@ -228,6 +228,26 @@ export class Inbox {
      */
     open: (conversationId: ConversationId, queueId: QueueId, actor: Actor) =>
       this.#open(conversationId, queueId, actor, 'outbound'),
+
+    /**
+     * Runs a turn of `bot` on the ticket after `in`, with `trigger: 'wake'` and `token`. The turn
+     * does nothing unless that bot holds the ticket by then. Through `tasks.queue()` the delay
+     * survives a restart, and through `tasks.inline()` it doesn't.
+     */
+    wake: async (id: TicketId, bot: BotKey, token: string, options: { in?: DurationLike } = {}) => {
+      const attendant = await this.#botAttendant(bot)
+
+      await this.#tasks.enqueue(
+        {
+          task: 'bot_turn',
+          ticketId: id,
+          botId: attendant.id,
+          trigger: { kind: 'wake', token },
+          attempt: 0,
+        },
+        Duration.fromDurationLike(options.in ?? 0).toMillis(),
+      )
+    },
   }
 
   readonly messages = {
@@ -1387,7 +1407,7 @@ export class Inbox {
 
     if (found === null) return
 
-    const debounce = trigger.kind === 'assigned' ? 0 : (found.bot.debounce ?? 0)
+    const debounce = trigger.kind === 'message' ? (found.bot.debounce ?? 0) : 0
 
     await this.#tasks.enqueue(
       { task: 'bot_turn', ticketId, botId, trigger, attempt: 0 },
@@ -1433,7 +1453,9 @@ export class Inbox {
         const now = DateTime.now()
 
         const reply = await bot.turn({
-          trigger: task.trigger.kind,
+          ...(task.trigger.kind === 'wake'
+            ? { trigger: 'wake', token: task.trigger.token }
+            : { trigger: task.trigger.kind }),
           ticket,
           channel: { id: channel.id, provider },
           contactId: conversation.contactId,
@@ -1533,6 +1555,8 @@ export class Inbox {
       case 'message':
         // A newer message's own turn takes the batch once its debounce passes.
         return unanswered.at(-1)?.id === trigger.messageId
+      case 'wake':
+        return true
       default: {
         const unhandled: never = trigger
 

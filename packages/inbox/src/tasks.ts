@@ -18,11 +18,13 @@ export type InboxTask =
 /**
  * Why a bot turn runs. A turn after the bot got the ticket only runs while the ticket is still at
  * the version that handed it over, and one after a message only while that message is the newest
- * unanswered one, so a turn delivered twice, or overtaken, does nothing.
+ * unanswered one, so a turn delivered twice, or overtaken, does nothing. A wake runs whenever the
+ * bot still holds the ticket, and the bot tells from `token` whether it is still due.
  */
 export type BotTrigger =
   | { kind: 'assigned'; version: number }
   | { kind: 'message'; messageId: MessageId }
+  | { kind: 'wake'; token: string }
 
 /**
  * How long a dispatch owns a pending message. A worker that dies mid-send loses it after this.

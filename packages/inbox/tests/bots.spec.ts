@@ -431,4 +431,58 @@ test.group('bot turns', group => {
     assert.deepEqual(sent(), [])
     assert.notProperty(JSON.parse((await ticketRow(ticketId)).bot_state), String(bot.id))
   })
+
+  test('a wake runs a turn of the holding bot with its token, after its delay', async ({
+    assert,
+  }) => {
+    const channel = await channelIn(app)
+
+    await channel.write('hello')
+
+    const ticketId = await channel.openTicket()
+
+    script = async turn =>
+      turn.trigger === 'wake'
+        ? reply(`Still there? (${turn.token})`)
+        : { kind: 'silent', state: turn.state }
+
+    await handToBot(ticketId)
+
+    const asked = Date.now()
+
+    await inbox.tickets.wake(ticketId, 'scripted', 'nudge-1', { in: { milliseconds: 200 } })
+
+    assert.lengthOf(turns, 1)
+
+    await eventually(() => fake.sends.length === 1)
+
+    assert.isAtLeast(Date.now() - asked, 200)
+    assert.deepEqual(turns, [
+      { trigger: 'assigned', texts: ['hello'] },
+      { trigger: 'wake', texts: ['hello'] },
+    ])
+    assert.deepEqual(sent(), [{ kind: 'text', text: 'Still there? (nudge-1)' }])
+  })
+
+  test('a wake runs nothing once the bot no longer holds the ticket', async ({ assert }) => {
+    const channel = await channelIn(app)
+
+    await channel.write('hello')
+
+    const ticketId = await channel.openTicket()
+    const human = await inbox.attendants.forUser(Math.floor(Math.random() * 1e9))
+
+    await inbox.queues.addMember(channel.queueId, human)
+
+    script = async turn =>
+      turn.trigger === 'wake' ? reply('Still there?') : { kind: 'silent', state: turn.state }
+
+    await handToBot(ticketId)
+    await inbox.tickets.wake(ticketId, 'scripted', 'nudge-1', { in: { milliseconds: 100 } })
+    await inbox.tickets.apply(ticketId, { gesture: 'assume' }, human)
+    await sleep(300)
+
+    assert.lengthOf(turns, 1)
+    assert.deepEqual(sent(), [])
+  })
 })

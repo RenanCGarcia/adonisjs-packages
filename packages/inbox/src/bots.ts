@@ -21,11 +21,7 @@ export interface InboundMessage {
   sentAt: DateTime
 }
 
-export interface BotTurn<State extends JsonValue> {
-  /**
-   * `assigned` when the bot just got the ticket, `message` when the contact wrote.
-   */
-  trigger: 'assigned' | 'message'
+export type BotTurn<State extends JsonValue> = {
   ticket: TicketSnapshot
   /**
    * The channel the ticket's conversation is on, and so the one its replies go out through.
@@ -39,7 +35,21 @@ export interface BotTurn<State extends JsonValue> {
   unanswered: InboundMessage[]
   state: State
   now: DateTime
-}
+} & (
+  | {
+      /**
+       * `assigned` when the bot just got the ticket, `message` when the contact wrote.
+       */
+      trigger: 'assigned' | 'message'
+    }
+  | {
+      /**
+       * Asked for through `inbox.tickets.wake()`, with the token given there.
+       */
+      trigger: 'wake'
+      token: string
+    }
+)
 
 /**
  * A bot can only hand the ticket on. It never assumes or assigns.
@@ -80,7 +90,8 @@ export type BotReply<State extends JsonValue> =
  * container, so `@inject()` works. The inbox runs its turns:
  *
  * - after each inbound message on a ticket the bot holds, once `debounce` passed without a newer
- *   one, and when it gets the ticket from a human or an automation;
+ *   one, when it gets the ticket from a human or an automation, and when woken through
+ *   `inbox.tickets.wake()`;
  * - outside any transaction, then commits the replies, the state, the handoff and `within`
  *   together, guarded by the ticket version the turn read;
  * - drops the turn when the bot lost the ticket meanwhile, and runs it again with the longer
