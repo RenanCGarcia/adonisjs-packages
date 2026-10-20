@@ -1,0 +1,17 @@
+import { compose } from '@adonisjs/core/helpers'
+import { hasMany } from '@adonisjs/lucid/orm'
+import type { HasMany } from '@adonisjs/lucid/types/relations'
+import { withInboxAttendant } from '@enzopita/adonisjs-inbox/mixins'
+import { InboxAttendantSchema } from '#database/schema'
+import QueueMember from '#models/inbox/queue_member'
+import Ticket from '#models/inbox/ticket'
+
+export default class Attendant extends compose(InboxAttendantSchema, withInboxAttendant()) {
+  static table = 'inbox_attendants'
+
+  @hasMany(() => QueueMember)
+  declare memberships: HasMany<typeof QueueMember>
+
+  @hasMany(() => Ticket, { foreignKey: 'assigneeId' })
+  declare tickets: HasMany<typeof Ticket>
+}

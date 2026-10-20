@@ -10,7 +10,7 @@ import { defineConfig } from '../src/define_config.ts'
 import type { Inbox } from '../src/inbox.ts'
 import { channelIn, eventually, FakeChannelAdapter } from '../src/testing/main.ts'
 import type { Actor, JsonValue, TicketId } from '../src/types.ts'
-import { boot, migratePlayground, playgroundModels } from './helpers/app.ts'
+import { boot, migrateFixture, fixtureModels } from './helpers/app.ts'
 
 const fake = new FakeChannelAdapter()
 
@@ -49,11 +49,11 @@ test.group('bot turns', group => {
   let inbox: Inbox
 
   group.setup(async () => {
-    await migratePlayground()
+    await migrateFixture()
 
     app = await boot(
       defineConfig({
-        models: playgroundModels(),
+        models: fixtureModels(),
         bots: { scripted: async () => ({ default: ScriptedBot }) },
         channels: { fake: adapters.fake(fake) },
       }),

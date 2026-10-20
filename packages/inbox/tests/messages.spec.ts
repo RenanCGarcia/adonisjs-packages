@@ -5,29 +5,10 @@ import { DateTime } from 'luxon'
 
 import type { NormalizedEvent } from '../src/adapters/port.ts'
 import { eventually, fakeWebhookBody } from '../src/testing/main.ts'
-import {
-  agent,
-  database,
-  playgroundUrl,
-  queue,
-  servePlayground,
-  type Agent,
-  type Ticket,
-} from './helpers/http.ts'
+import type { TicketId } from '../src/types.ts'
+import { agent, bootFixture, channelOn, host, queue, type Agent } from './helpers/host.ts'
 
-interface Channel {
-  id: number
-  webhookToken: string
-  credentials: { secret: string }
-}
-
-interface Queued {
-  status: number
-  outcome?: string
-  reason?: string
-  messageId: number
-  ticket: Ticket
-}
+type Channel = Awaited<ReturnType<typeof channelOn>>
 
 type Value = string | number | null
 
@@ -54,28 +35,24 @@ interface Row {
 }
 
 async function select(sql: string, ...params: Value[]): Promise<Row[]> {
-  const result = await database().rawQuery(sql, params)
+  const result = await host().db.rawQuery(sql, params)
 
   // pg answers a raw query with the driver's result, sqlite with the rows.
   return Array.isArray(result) ? result : result.rows
 }
 
-async function channelIn(admin: Agent, queueId: number, provider = 'fake') {
-  return admin.post<Channel>('/inbox/channels', { queueId, provider })
+/**
+ * The provider posting `events` to the channel's webhook route.
+ */
+function webhook(channel: Channel, events: NormalizedEvent[], secret = channel.secret) {
+  return host().inbox.ingest(channel.webhookToken, {
+    headers: { 'content-type': 'application/json', 'x-fake-secret': secret },
+    rawBody: fakeWebhookBody(...events),
+  })
 }
 
-async function webhook(
-  channel: Channel,
-  events: NormalizedEvent[],
-  secret = channel.credentials.secret,
-) {
-  const response = await fetch(playgroundUrl(`/inbox/webhooks/${channel.webhookToken}`), {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', 'x-fake-secret': secret },
-    body: fakeWebhookBody(...events),
-  })
-
-  return response.status
+function reply(by: Agent, ticketId: TicketId, text: string, clientRef?: string) {
+  return host().inbox.messages.send(ticketId, { kind: 'text', text }, by.me, { clientRef })
 }
 
 function received(address: string, externalId: string = randomUUID()): NormalizedEvent {
@@ -92,9 +69,9 @@ function received(address: string, externalId: string = randomUUID()): Normalize
 /**
  * A contact writes in on a fresh channel, which opens a queued ticket in a queue `members` belong to.
  */
-async function inboundTicket(admin: Agent, ...members: Agent[]) {
-  const queueId = await queue(admin, ...members)
-  const channel = await channelIn(admin, queueId)
+async function inboundTicket(...members: Agent[]) {
+  const queueId = await queue(...members)
+  const channel = await channelOn(queueId)
   const address = `+55${randomUUID()}`
 
   await webhook(channel, [received(address)])
@@ -106,7 +83,8 @@ async function inboundTicket(admin: Agent, ...members: Agent[]) {
     channel.id,
   )
 
-  return { channel, address, queueId, ticketId: Number(row?.id) }
+  // SAFETY: the id of the ticket row the webhook opened.
+  return { channel, address, queueId, ticketId: Number(row?.id) as TicketId }
 }
 
 async function messagesOf(ticketId: number) {
@@ -116,19 +94,18 @@ async function messagesOf(ticketId: number) {
   )
 }
 
-test.group('messages over HTTP', group => {
-  servePlayground(group)
+test.group('messages', group => {
+  bootFixture(group)
 
   test('a webhook opens a ticket for a new contact and counts the message unread', async ({
     assert,
   }) => {
-    const admin = await agent()
-    const queueId = await queue(admin)
-    const channel = await channelIn(admin, queueId)
+    const queueId = await queue()
+    const channel = await channelOn(queueId)
     const address = `+55${randomUUID()}`
     const event = received(address, 'wamid.first')
 
-    assert.equal(await webhook(channel, [event]), 200)
+    assert.equal(await webhook(channel, [event]), 'accepted')
 
     const contacts = await select(
       'SELECT id, name FROM inbox_contacts WHERE channel_id = ? AND address = ?',
@@ -183,11 +160,13 @@ test.group('messages over HTTP', group => {
   })
 
   test('a repeated webhook stores one message on one ticket', async ({ assert }) => {
-    const admin = await agent()
-    const channel = await channelIn(admin, await queue(admin))
+    const channel = await channelOn(await queue())
     const event = received(`+55${randomUUID()}`)
 
-    assert.deepEqual([await webhook(channel, [event]), await webhook(channel, [event])], [200, 200])
+    assert.deepEqual(
+      [await webhook(channel, [event]), await webhook(channel, [event])],
+      ['accepted', 'accepted'],
+    )
 
     const tickets = await select(
       `SELECT inbox_tickets.id, unread_count FROM inbox_tickets
@@ -204,14 +183,13 @@ test.group('messages over HTTP', group => {
   test('a webhook with the wrong secret or token is refused and stored nowhere', async ({
     assert,
   }) => {
-    const admin = await agent()
-    const channel = await channelIn(admin, await queue(admin))
+    const channel = await channelOn(await queue())
     const event = received(`+55${randomUUID()}`)
 
     const forged = await webhook(channel, [event], 'not-the-secret')
     const unknown = await webhook({ ...channel, webhookToken: randomUUID() }, [event])
 
-    assert.deepEqual([forged, unknown], [401, 404])
+    assert.deepEqual([forged, unknown], ['invalid_signature', 'unknown_channel'])
     assert.lengthOf(
       await select('SELECT id FROM inbox_channel_events WHERE channel_id = ?', channel.id),
       0,
@@ -220,15 +198,14 @@ test.group('messages over HTTP', group => {
 
   test('a reply to a queued ticket assumes it and goes out', async ({ assert }) => {
     const ana = await agent()
-    const { ticketId } = await inboundTicket(ana, ana)
+    const { ticketId } = await inboundTicket(ana)
 
-    const reply = await ana.post<Queued>(`/inbox/tickets/${ticketId}/messages`, { text: 'On it!' })
+    const sent = await reply(ana, ticketId, 'On it!')
     const [inbound, outbound] = await messagesOf(ticketId)
 
-    assert.equal(reply.status, 201)
-    assert.equal(reply.outcome, 'queued')
-    assert.deepInclude(reply.ticket, { unreadCount: 0 })
-    assert.equal(reply.ticket.state.status, 'in_progress')
+    assert.equal(sent.outcome, 'queued')
+    assert.deepInclude(sent.outcome === 'queued' && sent.ticket, { unreadCount: 0 })
+    assert.equal(sent.outcome === 'queued' && sent.ticket.state.status, 'in_progress')
     assert.equal(inbound?.direction, 'inbound')
     assert.deepInclude(outbound, {
       direction: 'outbound',
@@ -254,12 +231,12 @@ test.group('messages over HTTP', group => {
   }) => {
     const ana = await agent()
     const bea = await agent()
-    const { ticketId } = await inboundTicket(ana, ana, bea)
+    const { ticketId } = await inboundTicket(ana, bea)
 
-    await ana.post(`/inbox/tickets/${ticketId}/assume`)
-    const reply = await bea.post<Queued>(`/inbox/tickets/${ticketId}/messages`, { text: 'Mine?' })
+    await ana.assume({ id: ticketId })
+    const refused = await reply(bea, ticketId, 'Mine?')
 
-    assert.deepEqual([reply.status, reply.reason], [409, 'not_assignee'])
+    assert.deepEqual(refused, { outcome: 'rejected', reason: 'not_assignee' })
     assert.deepEqual(
       (await messagesOf(ticketId)).map(message => message.direction),
       ['inbound'],
@@ -268,27 +245,28 @@ test.group('messages over HTTP', group => {
 
   test('a retried POST with the same idempotency key stores one message', async ({ assert }) => {
     const ana = await agent()
-    const { ticketId } = await inboundTicket(ana, ana)
+    const { ticketId } = await inboundTicket(ana)
     const key = randomUUID()
-    const path = `/inbox/tickets/${ticketId}/messages`
 
-    const first = await ana.post<Queued>(path, { text: 'Once' }, { 'idempotency-key': key })
-    const retry = await ana.post<Queued>(path, { text: 'Once' }, { 'idempotency-key': key })
+    const first = await reply(ana, ticketId, 'Once', key)
+    const retry = await reply(ana, ticketId, 'Once', key)
 
     assert.equal(retry.outcome, 'queued')
-    assert.equal(retry.messageId, first.messageId)
+    assert.equal(
+      retry.outcome === 'queued' && retry.messageId,
+      first.outcome === 'queued' && first.messageId,
+    )
     assert.lengthOf(await select('SELECT id FROM inbox_messages WHERE client_ref = ?', key), 1)
   })
 
   test('statuses arriving out of order never move a message back', async ({ assert }) => {
     const ana = await agent()
-    const { channel, ticketId } = await inboundTicket(ana, ana)
-    const reply = await ana.post<Queued>(`/inbox/tickets/${ticketId}/messages`, { text: 'Hi' })
+    const { channel, ticketId } = await inboundTicket(ana)
+    const hi = await reply(ana, ticketId, 'Hi')
 
-    const [sent] = await select(
-      'SELECT external_id FROM inbox_messages WHERE id = ?',
-      reply.messageId,
-    )
+    if (hi.outcome !== 'queued') throw new Error(`the reply was ${hi.outcome}`)
+
+    const [sent] = await select('SELECT external_id FROM inbox_messages WHERE id = ?', hi.messageId)
 
     const externalId = String(sent?.external_id)
 
@@ -301,10 +279,7 @@ test.group('messages over HTTP', group => {
     await webhook(channel, [status('read')])
     await webhook(channel, [status('delivered')])
 
-    const [message] = await select(
-      'SELECT status FROM inbox_messages WHERE id = ?',
-      reply.messageId,
-    )
+    const [message] = await select('SELECT status FROM inbox_messages WHERE id = ?', hi.messageId)
 
     assert.equal(message?.status, 'read')
   })
@@ -313,13 +288,12 @@ test.group('messages over HTTP', group => {
     assert,
   }) => {
     const ana = await agent()
-    const { channel, address, ticketId } = await inboundTicket(ana, ana)
-    const reply = await ana.post<Queued>(`/inbox/tickets/${ticketId}/messages`, { text: 'Hi' })
+    const { channel, address, ticketId } = await inboundTicket(ana)
+    const hi = await reply(ana, ticketId, 'Hi')
 
-    const [sent] = await select(
-      'SELECT external_id FROM inbox_messages WHERE id = ?',
-      reply.messageId,
-    )
+    if (hi.outcome !== 'queued') throw new Error(`the reply was ${hi.outcome}`)
+
+    const [sent] = await select('SELECT external_id FROM inbox_messages WHERE id = ?', hi.messageId)
 
     const echo = (externalId: string, text: string): NormalizedEvent => ({
       type: 'message_echoed',
@@ -351,8 +325,7 @@ test.group('messages over HTTP', group => {
   test('the triage bot greets a contact on a triage channel, then hands the ticket back', async ({
     assert,
   }) => {
-    const admin = await agent()
-    const channel = await channelIn(admin, await queue(admin), 'triage')
+    const channel = await channelOn(await queue(), 'triage')
     const address = `+55${randomUUID()}`
 
     const replies = async () =>

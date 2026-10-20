@@ -7,9 +7,8 @@ import { DateTime } from 'luxon'
 
 import type { Database } from '@adonisjs/lucid/database'
 
-import { migratePlayground, playgroundDatabase, playgroundModels } from './helpers/app.ts'
+import { fixture, fixtureDatabase, fixtureModels, migrateFixture } from './helpers/app.ts'
 
-const playground = new URL('../../../playground/', import.meta.url)
 const run = promisify(execFile)
 
 let db: Database
@@ -18,7 +17,7 @@ let db: Database
  * An open ticket on its own queue, channel and contact, whose last activity was `idle` ago.
  */
 async function ticketIdleFor(idle: { days: number }) {
-  const models = playgroundModels()
+  const models = fixtureModels()
   const { default: Queue } = await models.queue()
   const { default: Channel } = await models.channel()
   const { default: Contact } = await models.contact()
@@ -64,19 +63,19 @@ function ticketRow(id: number) {
 
 test.group('inbox:tick', group => {
   group.setup(async () => {
-    await migratePlayground()
-    const local = await playgroundDatabase()
+    await migrateFixture()
+    const local = await fixtureDatabase()
     db = local.db
 
     return local.close
   })
 
-  test('closes the tickets the playground config finds inactive, once', async ({ assert }) => {
+  test('closes the tickets the fixture config finds inactive, once', async ({ assert }) => {
     const stale = await ticketIdleFor({ days: 3 })
     const fresh = await ticketIdleFor({ days: 0 })
 
-    const first = await run('node', ['ace', 'inbox:tick'], { cwd: playground })
-    const second = await run('node', ['ace', 'inbox:tick'], { cwd: playground })
+    const first = await run('node', ['ace', 'inbox:tick'], { cwd: fixture })
+    const second = await run('node', ['ace', 'inbox:tick'], { cwd: fixture })
 
     assert.deepInclude(await ticketRow(stale), {
       status: 'closed',

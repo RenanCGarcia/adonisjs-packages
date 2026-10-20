@@ -16,9 +16,8 @@ import { MODEL_ROLES, type ModelRole } from '../src/models.ts'
 import { INBOX_MIGRATIONS } from '../src/schema.ts'
 import { copyApp, migrateApp } from '../src/testing/app.ts'
 import { stubsRoot } from '../stubs/main.ts'
-import { boot, playgroundModels } from './helpers/app.ts'
+import { boot, fixture, fixtureModels } from './helpers/app.ts'
 
-const playground = new URL('../../../playground/', import.meta.url)
 const run = promisify(execFile)
 
 const withoutInbox = (file: string) => !file.includes('_inbox_')
@@ -100,15 +99,15 @@ async function schemaReport(root: URL, manifest: MigrationManifest<ModelRole>) {
 }
 
 test.group('migrations', group => {
-  // A copy's migration:fresh drops every table on a shared pg database, so the playground's own
+  // A copy's migration:fresh drops every table on a shared pg database, so the fixture's own
   // tables come back for the groups after this one.
-  group.teardown(() => migrateApp(playground))
+  group.teardown(() => migrateApp(fixture))
 
   test('a fresh app gets every migration in manifest order, after its own', async ({
     assert,
     cleanup,
   }) => {
-    const copy = await copyApp(playground, withoutInbox)
+    const copy = await copyApp(fixture, withoutInbox)
     cleanup(copy.remove)
     const manifest = await manifestWithPriority(copy.root)
     const before = await migrationsOf(copy.root)
@@ -135,7 +134,7 @@ test.group('migrations', group => {
     assert,
     cleanup,
   }) => {
-    const copy = await copyApp(playground, withoutInbox)
+    const copy = await copyApp(fixture, withoutInbox)
     cleanup(copy.remove)
     const manifest = await manifestWithPriority(copy.root)
     const edited = '// tenant_id added by the host\nexport default class {}\n'
@@ -161,7 +160,7 @@ test.group('migrations', group => {
   })
 
   test('publishing again writes nothing', async ({ assert, cleanup }) => {
-    const copy = await copyApp(playground, withoutInbox)
+    const copy = await copyApp(fixture, withoutInbox)
     cleanup(copy.remove)
     const manifest = await manifestWithPriority(copy.root)
     const app = await appAt(copy.root)
@@ -177,7 +176,7 @@ test.group('migrations', group => {
     assert,
     cleanup,
   }) => {
-    const copy = await copyApp(playground, withoutInbox)
+    const copy = await copyApp(fixture, withoutInbox)
     cleanup(() => {
       ace(copy.root, 'migration:reset', '--force')
 
@@ -221,7 +220,7 @@ test.group('migrations', group => {
     assert,
     cleanup,
   }) => {
-    const copy = await copyApp(playground, withoutInbox)
+    const copy = await copyApp(fixture, withoutInbox)
     cleanup(() => {
       ace(copy.root, 'migration:reset', '--force')
 
@@ -256,7 +255,7 @@ test.group('migrations', group => {
     assert,
     cleanup,
   }) => {
-    const copy = await copyApp(playground, withoutInbox)
+    const copy = await copyApp(fixture, withoutInbox)
     cleanup(copy.remove)
 
     const configure = ace(copy.root, 'configure', '@enzopita/adonisjs-inbox')
@@ -279,7 +278,7 @@ test.group('migrations', group => {
 
     const app = await boot(
       defineConfig({
-        models: { ...playgroundModels(), ticket: async () => ({ default: Ticket }) },
+        models: { ...fixtureModels(), ticket: async () => ({ default: Ticket }) },
         bots: {},
         channels: {},
       }),
@@ -300,8 +299,8 @@ test.group('migrations', group => {
     assert.instanceOf(await inbox.model('queue'), Function)
   })
 
-  test('the playground has every inbox migration', async ({ assert }) => {
-    const check = ace(playground, 'inbox:migrations', '--check')
+  test('the fixture has every inbox migration', async ({ assert }) => {
+    const check = ace(fixture, 'inbox:migrations', '--check')
 
     assert.equal(check.exitCode, 0, check.output)
   })

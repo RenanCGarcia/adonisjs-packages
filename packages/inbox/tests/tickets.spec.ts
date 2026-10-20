@@ -1,14 +1,7 @@
 import { test } from '@japa/runner'
 
-import {
-  agent,
-  database,
-  openTicket,
-  playgroundUrl,
-  queue,
-  servePlayground,
-  type Ticket,
-} from './helpers/http.ts'
+import type { ApplyResult, TicketSnapshot } from '../src/types.ts'
+import { agent, bootFixture, host, openTicket, queue } from './helpers/host.ts'
 
 interface TicketEvent {
   type: string
@@ -18,7 +11,24 @@ interface TicketEvent {
   actor_source: string | null
 }
 
-async function eventsOf(ticket: Ticket) {
+function database() {
+  return host().db
+}
+
+/**
+ * Who holds the ticket after the gesture, when it changed or kept it.
+ */
+function holderAfter(result: ApplyResult) {
+  return result.outcome !== 'rejected' && result.ticket.state.status === 'in_progress'
+    ? result.ticket.state.assignee
+    : null
+}
+
+function reasonOf(result: ApplyResult) {
+  return result.outcome === 'rejected' ? result.reason : null
+}
+
+async function eventsOf(ticket: TicketSnapshot) {
   const rows = await database()
     .from('inbox_ticket_events')
     .where('ticket_id', ticket.id)
@@ -34,44 +44,35 @@ async function eventsOf(ticket: Ticket) {
   }))
 }
 
-function rowOf(ticket: Ticket) {
+function rowOf(ticket: TicketSnapshot) {
   return database().from('inbox_tickets').where('id', ticket.id).first()
 }
 
-test.group('tickets over HTTP', group => {
-  servePlayground(group)
+test.group('tickets', group => {
+  bootFixture(group)
 
   test('assume, transfer, return and close each land as ticket events', async ({ assert }) => {
     const ana = await agent()
     const bea = await agent()
-    const support = await queue(ana, ana)
-    const billing = await queue(ana, bea)
+    const support = await queue(ana)
+    const billing = await queue(bea)
     const ticket = await openTicket(ana, support)
+    const anaId = ana.me.id
+    const beaId = bea.me.id
 
     const assumed = await ana.assume(ticket)
-    const anaId = assumed.ticket.state.status === 'in_progress' && assumed.ticket.state.assignee.id
-
-    const transferred = await ana.post(`/inbox/tickets/${ticket.id}/transfer`, {
-      queueId: billing,
-      userId: bea.userId,
-    })
-
-    const beaId =
-      transferred.ticket.state.status === 'in_progress' && transferred.ticket.state.assignee.id
-
-    const returned = await bea.post(`/inbox/tickets/${ticket.id}/return`)
-    const closed = await bea.post(`/inbox/tickets/${ticket.id}/close`, { reason: 'manual' })
+    const transfer = { gesture: 'transfer', queueId: billing, to: beaId } as const
+    const transferred = await ana.apply(ticket, transfer)
+    const returned = await bea.apply(ticket, { gesture: 'return' })
+    const closed = await bea.apply(ticket, { gesture: 'close', reason: 'manual' })
 
     assert.deepEqual(
-      [assumed, transferred, returned, closed].map(answer => [answer.status, answer.outcome]),
-      [
-        [200, 'changed'],
-        [200, 'changed'],
-        [200, 'changed'],
-        [200, 'changed'],
-      ],
+      [assumed, transferred, returned, closed].map(result => result.outcome),
+      ['changed', 'changed', 'changed', 'changed'],
     )
-    assert.deepEqual(closed.ticket.state, {
+    assert.deepEqual(holderAfter(assumed), { kind: 'human', id: anaId })
+    assert.deepEqual(holderAfter(transferred), { kind: 'human', id: beaId })
+    assert.deepEqual(closed.outcome === 'changed' && closed.ticket.state, {
       status: 'closed',
       queueId: billing,
       assignee: null,
@@ -140,7 +141,7 @@ test.group('tickets over HTTP', group => {
 
   test('a repeated gesture is unchanged and records nothing', async ({ assert }) => {
     const ana = await agent()
-    const ticket = await openTicket(ana, await queue(ana, ana))
+    const ticket = await openTicket(ana, await queue(ana))
 
     await ana.assume(ticket)
     const again = await ana.assume(ticket)
@@ -151,24 +152,19 @@ test.group('tickets over HTTP', group => {
 
   test('a human takes a ticket back from the triage bot', async ({ assert }) => {
     const ana = await agent()
-    const ticket = await openTicket(ana, await queue(ana, ana))
+    const ticket = await openTicket(ana, await queue(ana))
+    const triage = await host().inbox.attendants.bot('triage')
 
-    const toBot = await ana.post(`/inbox/tickets/${ticket.id}/assign`, { bot: 'triage' })
+    const toBot = await ana.apply(ticket, { gesture: 'assign', to: triage.id })
     const takenBack = await ana.assume(ticket)
 
-    assert.equal(
-      toBot.ticket.state.status === 'in_progress' && toBot.ticket.state.assignee.kind,
-      'bot',
-    )
-    assert.equal(
-      takenBack.ticket.state.status === 'in_progress' && takenBack.ticket.state.assignee.kind,
-      'human',
-    )
+    assert.equal(holderAfter(toBot)?.kind, 'bot')
+    assert.equal(holderAfter(takenBack)?.kind, 'human')
   })
 
   test('agents assuming at once leave exactly one holder', async ({ assert }) => {
     const agents = await Promise.all([agent(), agent(), agent(), agent(), agent()])
-    const support = await queue(agents[0]!, ...agents)
+    const support = await queue(...agents)
 
     const tickets = [
       await openTicket(agents[0]!, support),
@@ -177,19 +173,13 @@ test.group('tickets over HTTP', group => {
     ]
 
     for (const ticket of tickets) {
-      // Open one keep-alive socket per racer first, so the assumes reach the server together.
-      await Promise.all(agents.map(() => fetch(playgroundUrl()).then(response => response.text())))
-
-      const answers = await Promise.all(agents.map(racer => racer.assume(ticket)))
-      const [winner, ...others] = answers.filter(answer => answer.status === 200)
-
-      const holder =
-        winner?.ticket.state.status === 'in_progress' && winner.ticket.state.assignee.id
+      const results = await Promise.all(agents.map(racer => racer.assume(ticket)))
+      const [winner, ...others] = results.filter(result => result.outcome === 'changed')
 
       assert.lengthOf(others, 0)
-      assert.equal((await rowOf(ticket))?.assignee_id, holder)
+      assert.equal((await rowOf(ticket))?.assignee_id, winner && holderAfter(winner)?.id)
       assert.sameMembers(
-        answers.filter(answer => answer.status !== 200).map(answer => answer.reason),
+        results.filter(result => result.outcome !== 'changed').map(reasonOf),
         Array.from({ length: agents.length - 1 }, () => 'held_by_other'),
       )
       assert.lengthOf(
@@ -202,28 +192,28 @@ test.group('tickets over HTTP', group => {
   test('authorize vetoes closing a ticket a colleague holds', async ({ assert }) => {
     const ana = await agent()
     const bea = await agent()
-    const ticket = await openTicket(ana, await queue(ana, ana, bea))
+    const ticket = await openTicket(ana, await queue(ana, bea))
 
     await ana.assume(ticket)
-    const vetoed = await bea.post(`/inbox/tickets/${ticket.id}/close`, { reason: 'manual' })
-    const ownClose = await ana.post(`/inbox/tickets/${ticket.id}/close`, { reason: 'manual' })
+    const vetoed = await bea.apply(ticket, { gesture: 'close', reason: 'manual' })
+    const ownClose = await ana.apply(ticket, { gesture: 'close', reason: 'manual' })
 
-    assert.deepEqual([vetoed.status, vetoed.reason], [409, 'forbidden'])
+    assert.deepEqual([vetoed.outcome, reasonOf(vetoed)], ['rejected', 'forbidden'])
     assert.equal(ownClose.outcome, 'changed')
   })
 
   test('only the holder clears the unread count', async ({ assert }) => {
     const ana = await agent()
     const bea = await agent()
-    const ticket = await openTicket(ana, await queue(ana, ana, bea))
+    const ticket = await openTicket(ana, await queue(ana, bea))
 
     await ana.assume(ticket)
     await database().from('inbox_tickets').where('id', ticket.id).update({ unread_count: 3 })
 
-    await bea.post(`/inbox/tickets/${ticket.id}/read`)
+    await host().inbox.tickets.markRead(ticket.id, bea.me)
     const afterColleague = (await rowOf(ticket))?.unread_count
 
-    await ana.post(`/inbox/tickets/${ticket.id}/read`)
+    await host().inbox.tickets.markRead(ticket.id, ana.me)
 
     assert.equal(afterColleague, 3)
     assert.equal((await rowOf(ticket))?.unread_count, 0)
@@ -232,14 +222,12 @@ test.group('tickets over HTTP', group => {
   test('deactivating an attendant returns its tickets to the queue', async ({ assert }) => {
     const admin = await agent()
     const ana = await agent()
-    const support = await queue(admin, ana)
+    const support = await queue(ana)
     const tickets = [await openTicket(admin, support), await openTicket(admin, support)]
 
     for (const ticket of tickets) await ana.assume(ticket)
 
-    const deactivated = await admin.post(`/inbox/attendants/${ana.userId}/deactivate`)
-
-    assert.equal(deactivated.status, 204)
+    await host().inbox.attendants.deactivate(ana.me)
 
     for (const ticket of tickets) {
       assert.equal((await rowOf(ticket))?.status, 'queued')
@@ -248,42 +236,42 @@ test.group('tickets over HTTP', group => {
         actor_kind: 'system',
         actor_source: 'attendant_deactivated',
       })
-      assert.equal((await ana.assume(ticket)).reason, 'attendant_inactive')
+      assert.equal(reasonOf(await ana.assume(ticket)), 'attendant_inactive')
     }
   })
 
   test('removing a member returns its tickets in that queue only', async ({ assert }) => {
     const admin = await agent()
     const carl = await agent()
-    const support = await queue(admin, carl)
-    const billing = await queue(admin, carl)
+    const support = await queue(carl)
+    const billing = await queue(carl)
     const inSupport = await openTicket(admin, support)
     const inBilling = await openTicket(admin, billing)
 
     await carl.assume(inSupport)
     await carl.assume(inBilling)
 
-    const removed = await admin.del(`/inbox/queues/${support}/members/${carl.userId}`)
+    await host().inbox.queues.removeMember(support, carl.me)
 
-    assert.equal(removed.status, 204)
     assert.equal((await rowOf(inSupport))?.status, 'queued')
     assert.equal((await rowOf(inBilling))?.status, 'in_progress')
-    assert.equal((await carl.assume(inSupport)).reason, 'not_member')
+    assert.equal(reasonOf(await carl.assume(inSupport)), 'not_member')
   })
 
   test('a conversation has one open ticket, and closing it frees the slot', async ({ assert }) => {
     const ana = await agent()
-    const ticket = await openTicket(ana, await queue(ana, ana))
-    const conversationId = Number((await rowOf(ticket))?.conversation_id)
+    const queueId = await queue(ana)
+    const ticket = await openTicket(ana, queueId)
+    const open = () => host().inbox.tickets.open(ticket.conversationId, queueId, ana.me)
 
-    const reopened = await ana.post(`/inbox/conversations/${conversationId}/tickets`)
+    const reopened = await open()
 
     const now = '2026-01-05 10:00:00'
 
     const secondOpen = () =>
       database().table('inbox_tickets').insert({
-        conversation_id: conversationId,
-        open_conversation_id: conversationId,
+        conversation_id: ticket.conversationId,
+        open_conversation_id: ticket.conversationId,
         queue_id: ticket.state.queueId,
         status: 'queued',
         version: 0,
@@ -296,8 +284,8 @@ test.group('tickets over HTTP', group => {
 
     await assert.rejects(secondOpen, /unique constraint.*open_conversation_id/i)
 
-    await ana.post(`/inbox/tickets/${ticket.id}/close`, { reason: 'manual' })
-    const afterClose = await ana.post(`/inbox/conversations/${conversationId}/tickets`)
+    await ana.apply(ticket, { gesture: 'close', reason: 'manual' })
+    const afterClose = await open()
 
     assert.deepEqual([reopened.opened, reopened.ticket.id], [false, ticket.id])
     assert.equal(afterClose.opened, true)
@@ -306,7 +294,7 @@ test.group('tickets over HTTP', group => {
 
   test('the database refuses a ticket or attendant row the domain forbids', async ({ assert }) => {
     const ana = await agent()
-    const ticket = await openTicket(ana, await queue(ana, ana))
+    const ticket = await openTicket(ana, await queue(ana))
     const tickets = () => database().from('inbox_tickets').where('id', ticket.id)
 
     await assert.rejects(

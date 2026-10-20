@@ -7,7 +7,7 @@ import { adapters } from '../src/adapters/main.ts'
 import { defineConfig, type AuthorizeQuestion } from '../src/define_config.ts'
 import type { Inbox } from '../src/inbox.ts'
 import type { Attendant, InboxEvents } from '../src/types.ts'
-import { boot, migratePlayground, playgroundBots, playgroundModels } from './helpers/app.ts'
+import { boot, migrateFixture, fixtureBots, fixtureModels } from './helpers/app.ts'
 
 /**
  * Called by `authorize`, after the ticket was read and before it is written, which is where a
@@ -15,10 +15,10 @@ import { boot, migratePlayground, playgroundBots, playgroundModels } from './hel
  */
 let meanwhile: (question: AuthorizeQuestion) => Promise<void> = async () => {}
 
-const playgroundConfig = () =>
+const writesConfig = () =>
   defineConfig({
-    models: playgroundModels(),
-    bots: playgroundBots(),
+    models: fixtureModels(),
+    bots: fixtureBots(),
     channels: { fake: adapters.fake() },
     authorize: async question => {
       await meanwhile(question)
@@ -32,8 +32,8 @@ test.group('ticket writes', group => {
   let inbox: Inbox
 
   group.setup(async () => {
-    await migratePlayground()
-    app = await boot(playgroundConfig())
+    await migrateFixture()
+    app = await boot(writesConfig())
     inbox = await app.container.make('inbox')
 
     return () => app.terminate()
@@ -178,7 +178,7 @@ test.group('ticket writes', group => {
 
 test.group('inbox provider', () => {
   test('a config that leaves a model role out fails the boot', async ({ assert }) => {
-    const { ticket, ...models } = playgroundModels()
+    const { ticket, ...models } = fixtureModels()
 
     // @ts-expect-error a JavaScript config can leave a role out, which only the boot catches.
     const config = defineConfig({ models, bots: {}, channels: {} })

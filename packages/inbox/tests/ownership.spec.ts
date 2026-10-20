@@ -11,7 +11,7 @@ import { defineConfig } from '../src/define_config.ts'
 import type { Inbox } from '../src/inbox.ts'
 import { fakeWebhookBody } from '../src/testing/main.ts'
 import type { TicketId } from '../src/types.ts'
-import { boot, migratePlayground, playgroundModels } from './helpers/app.ts'
+import { boot, migrateFixture, fixtureModels } from './helpers/app.ts'
 
 /**
  * A host that keeps a tenant on each row the inbox creates.
@@ -26,13 +26,13 @@ const OWNED_TABLES = [
 ]
 
 /**
- * The playground's model of `role` with the host's `tenant_id` column.
+ * The fixture's model of `role` with the host's `tenant_id` column.
  */
 function owned<
   R extends 'channelEvent' | 'contact' | 'conversation' | 'ticket' | 'ticketEvent' | 'message',
 >(role: R) {
   const load = async () => {
-    const { default: Base } = await playgroundModels()[role]()
+    const { default: Base } = await fixtureModels()[role]()
 
     class Owned extends Base {
       static table = Base.table
@@ -64,12 +64,12 @@ test.group('ownership', group => {
   let inbox: Inbox
 
   group.setup(async () => {
-    await migratePlayground()
+    await migrateFixture()
 
     app = await boot(
       defineConfig({
         models: {
-          ...playgroundModels(),
+          ...fixtureModels(),
           channelEvent: owned('channelEvent'),
           contact: owned('contact'),
           conversation: owned('conversation'),

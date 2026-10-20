@@ -9,7 +9,7 @@ import { defineConfig } from '../src/define_config.ts'
 import type { Inbox } from '../src/inbox.ts'
 import { channelIn, FakeChannelAdapter } from '../src/testing/main.ts'
 import type { JsonValue, TicketId } from '../src/types.ts'
-import { boot, migratePlayground, playgroundModels } from './helpers/app.ts'
+import { boot, migrateFixture, fixtureModels } from './helpers/app.ts'
 
 const fake = new FakeChannelAdapter()
 
@@ -43,7 +43,7 @@ test.group('automations', group => {
   let inbox: Inbox
 
   group.setup(async () => {
-    await migratePlayground()
+    await migrateFixture()
 
     const channels = Object.fromEntries(
       ['assign', 'night', 'greet', 'loop', 'idle'].map(provider => [provider, adapters.fake(fake)]),
@@ -51,7 +51,7 @@ test.group('automations', group => {
 
     app = await boot(
       defineConfig({
-        models: playgroundModels(),
+        models: fixtureModels(),
         bots: { greeter: async () => ({ default: GreeterBot }) },
         channels,
         automations: [

@@ -1,8 +1,8 @@
 import { assert } from '@japa/assert'
 import { configure, processCLIArgs, run } from '@japa/runner'
 
-// The specs load the playground's `.env`, which sets TZ=UTC. Set it before any DateTime exists,
-// or luxon moves the zone under the DateTimes made before the load.
+// One zone for the specs and the fixture's ace commands, which inherit it, so they read back the
+// timestamps the other wrote. Set before any DateTime exists, or luxon moves the zone under it.
 process.env.TZ = 'UTC'
 
 processCLIArgs(process.argv.splice(2))

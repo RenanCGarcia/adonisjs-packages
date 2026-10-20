@@ -10,7 +10,7 @@ import type { Inbox } from '../src/inbox.ts'
 import { tasks } from '../src/tasks.ts'
 import { FakeChannelAdapter, fakeWebhookBody } from '../src/testing/main.ts'
 import type { MessageId, TicketId } from '../src/types.ts'
-import { boot, migratePlayground, playgroundModels } from './helpers/app.ts'
+import { boot, migrateFixture, fixtureModels } from './helpers/app.ts'
 
 const fake = new FakeChannelAdapter()
 
@@ -23,11 +23,11 @@ test.group('outbox', group => {
   let inbox: Inbox
 
   group.setup(async () => {
-    await migratePlayground()
+    await migrateFixture()
 
     app = await boot(
       defineConfig({
-        models: playgroundModels(),
+        models: fixtureModels(),
         bots: {},
         channels: { fake: adapters.fake(fake), receive_only: adapters.fake(receiveOnly) },
         tasks: tasks.inline(),
@@ -94,7 +94,7 @@ test.group('outbox', group => {
   }
 
   /**
-   * A time as the playground's database stores it, `minutes` ago.
+   * A time as the fixture's database stores it, `minutes` ago.
    */
   async function minutesAgo(minutes: number) {
     const db = await app.container.make('lucid.db')
