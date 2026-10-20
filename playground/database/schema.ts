@@ -71,10 +71,12 @@ export class InboxAttendantSchema extends BaseModel {
 }
 
 export class InboxChannelEventSchema extends BaseModel {
-  static $columns = ['channelId', 'id', 'processedAt', 'rawBody', 'receivedAt'] as const
+  static $columns = ['channelId', 'failedAt', 'id', 'processedAt', 'rawBody', 'receivedAt'] as const
   $columns = InboxChannelEventSchema.$columns
   @column()
   declare channelId: number
+  @column.dateTime()
+  declare failedAt: DateTime | null
   @column({ isPrimary: true })
   declare id: number
   @column.dateTime()

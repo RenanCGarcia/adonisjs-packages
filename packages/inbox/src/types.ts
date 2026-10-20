@@ -1,5 +1,7 @@
 import type { DateTime } from 'luxon'
 
+import type { RejectionCode } from './adapters/port.ts'
+
 declare const brand: unique symbol
 
 type Brand<T, B extends string> = T & { readonly [brand]: B }
@@ -136,6 +138,12 @@ export type ApplyResult =
   | { outcome: 'rejected'; reason: Rejection }
 
 export type MessageStatus = 'pending' | 'sent' | 'delivered' | 'read' | 'played' | 'failed'
+
+/**
+ * Why an outgoing message failed: what its provider answered, or `expired` when no dispatch sent
+ * it before `GIVE_UP_AFTER_MS`.
+ */
+export type MessageFailureCode = RejectionCode | 'expired'
 
 /**
  * What a message says, in both directions. Only `text` exists so far. Each new kind is a new

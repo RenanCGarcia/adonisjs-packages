@@ -56,6 +56,8 @@ export {
 
 export { InboxError, type InboxErrorCode } from './src/errors.ts'
 
+export type { RecoverReport, TickReport } from './src/inbox.ts'
+
 export { MODEL_ROLES, type ModelRole } from './src/models.ts'
 
 export {
@@ -72,6 +74,8 @@ export { stubsRoot } from './stubs/main.ts'
 
 export {
   DISPATCH_LEASE_MS,
+  GIVE_UP_AFTER_MS,
+  RECOVER_BATCH,
   SEND_TIMEOUT_MS,
   TASK_POLICY,
   tasks,

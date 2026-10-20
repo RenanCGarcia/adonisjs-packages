@@ -9,6 +9,10 @@ export interface InboxChannelEventRow {
   rawBody: string
   receivedAt: DateTime
   processedAt: DateTime | null
+  /**
+   * Set when the inbox gave up on a webhook it never managed to process.
+   */
+  failedAt: DateTime | null
 }
 
 export type InboxChannelEventModel<M extends Model = Model> = InboxModel<
@@ -29,6 +33,7 @@ export function withInboxChannelEvent(): <M extends Model>(
       declare rawBody: string
       declare receivedAt: DateTime
       declare processedAt: DateTime | null
+      declare failedAt: DateTime | null
     }
 
     return InboxChannelEvent

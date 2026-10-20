@@ -1,11 +1,11 @@
 import type { DateTime } from 'luxon'
 
-import type { RejectionCode } from '../adapters/port.ts'
 import { toContent, type ContentColumns } from '../message/content.ts'
 import type {
   AttendantId,
   ConversationId,
   MessageContent,
+  MessageFailureCode,
   MessageId,
   MessageKind,
   MessageStatus,
@@ -22,7 +22,7 @@ export interface InboxMessageRow extends ContentColumns {
   authorId: AttendantId | null
   externalId: string | null
   clientRef: string | null
-  failureCode: RejectionCode | null
+  failureCode: MessageFailureCode | null
   sentAt: DateTime
   dispatchedAt: DateTime | null
   /**
@@ -48,7 +48,7 @@ export function withInboxMessage(): <M extends Model>(superclass: M) => InboxMes
       declare authorId: AttendantId | null
       declare externalId: string | null
       declare clientRef: string | null
-      declare failureCode: RejectionCode | null
+      declare failureCode: MessageFailureCode | null
       declare sentAt: DateTime
       declare dispatchedAt: DateTime | null
 

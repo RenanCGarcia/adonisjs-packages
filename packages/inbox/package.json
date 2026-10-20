@@ -24,6 +24,7 @@
   "type": "module",
   "exports": {
     ".": "./build/index.js",
+    "./commands": "./build/commands/main.js",
     "./mixins": "./build/src/mixins/main.js",
     "./inbox_provider": "./build/providers/inbox_provider.js",
     "./services/main": "./build/services/main.js",

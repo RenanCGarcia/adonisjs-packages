@@ -29,6 +29,7 @@ export default defineConfig({
     () => import('@adonisjs/lucid/commands'),
     () => import('@adonisjs/session/commands'),
     () => import('@enzopita/adonisjs-openapi/commands'),
+    () => import('@enzopita/adonisjs-inbox/commands'),
   ],
 
   /*

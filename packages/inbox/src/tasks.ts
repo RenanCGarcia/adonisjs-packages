@@ -30,6 +30,18 @@ export type BotTrigger =
 export const DISPATCH_LEASE_MS = 120_000
 
 /**
+ * How long a stored webhook or a pending message is worth trying. `inbox.recover()` marks older
+ * ones failed instead of queueing them again.
+ */
+export const GIVE_UP_AFTER_MS = 24 * 60 * 60 * 1000
+
+/**
+ * How many webhooks, and how many messages, one `inbox.recover()` queues again at most. The rest
+ * wait for the next run.
+ */
+export const RECOVER_BATCH = 100
+
+/**
  * Derived from the lease, so a send always ends while its dispatch still owns the message.
  */
 export const SEND_TIMEOUT_MS = DISPATCH_LEASE_MS / 4

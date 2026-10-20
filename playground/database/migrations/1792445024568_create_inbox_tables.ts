@@ -75,6 +75,7 @@ export default class extends BaseSchema {
       table.text('raw_body').notNullable()
       table.timestamp('received_at').notNullable()
       table.timestamp('processed_at').nullable()
+      table.timestamp('failed_at').nullable()
     })
 
     this.schema.createTable('inbox_contacts', table => {

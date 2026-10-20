@@ -1,4 +1,8 @@
+import type { ModelQueryBuilderContract } from '@adonisjs/lucid/types/model'
 import type { DateTime, DurationLike } from 'luxon'
+
+import { sqlTime } from './internal/unit_of_work.ts'
+import type { InboxModelOf } from './mixins/main.ts'
 
 import type {
   AttendantRef,
@@ -81,6 +85,29 @@ export function defineAutomation<const Bots extends string = never>(
   automation: Automation<Bots>,
 ): Automation<NoInfer<Bots>> {
   return automation
+}
+
+type TicketModel = InboxModelOf<'ticket'>
+
+/**
+ * The filter as conditions on a ticket query.
+ */
+export function whereCandidates(Ticket: TicketModel, filter: CandidateFilter) {
+  const { status = 'open', lastActivityBefore, queueId, assigneeKind } = filter
+  const statuses = status === 'open' ? ['queued', 'in_progress'] : [status].flat()
+
+  return (query: ModelQueryBuilderContract<TicketModel>) => {
+    query.whereIn('status', statuses)
+
+    if (lastActivityBefore !== undefined) {
+      query.where('lastActivityAt', '<', sqlTime(Ticket, lastActivityBefore))
+    }
+
+    if (queueId !== undefined) query.where('queueId', queueId)
+
+    if (assigneeKind === 'none') query.whereNull('assigneeId')
+    else if (assigneeKind !== undefined) query.where('assigneeKind', assigneeKind)
+  }
 }
 
 type When = (moment: TicketMoment) => boolean

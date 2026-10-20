@@ -6,7 +6,7 @@ import type { TransactionClientContract } from '@adonisjs/lucid/types/database'
 import { DateTime, Duration } from 'luxon'
 
 import type { ContactIdentity, NormalizedEvent, WebhookRequest } from './adapters/port.ts'
-import type { Automation, Effect } from './automations.ts'
+import { whereCandidates, type Automation, type Effect } from './automations.ts'
 import type { AuthorizeQuestion, ResolvedInboxConfig } from './define_config.ts'
 import type { InboundMessage } from './bots.ts'
 import { InboxError } from './errors.ts'
@@ -25,6 +25,8 @@ import { advanceableFrom } from './message/status.ts'
 import type { InboxModelOf } from './mixins/main.ts'
 import {
   DISPATCH_LEASE_MS,
+  GIVE_UP_AFTER_MS,
+  RECOVER_BATCH,
   retryOf,
   type BotTrigger,
   type InboxTask,
@@ -144,6 +146,23 @@ type ChannelRow = InstanceType<InboxModelOf<'channel'>>
 type BotTurnTask = Extract<InboxTask, { task: 'bot_turn' }>
 
 type BotAttendant = Extract<Attendant, { kind: 'bot' }>
+
+export interface TickReport {
+  /**
+   * By automation name, the candidates it looked at and the tickets it changed.
+   */
+  automations: Record<string, { candidates: number; changed: number }>
+  recovered: RecoverReport
+}
+
+export interface RecoverReport {
+  channelEvents: number
+  messages: number
+  /**
+   * Work older than `GIVE_UP_AFTER_MS`, marked failed instead of queued again.
+   */
+  gaveUp: { channelEvents: number; messages: number }
+}
 
 export class Inbox {
   readonly #config: ResolvedInboxConfig
@@ -366,24 +385,101 @@ export class Inbox {
   }
 
   /**
+   * Runs the tick automations, then `recover`. `now` is the clock the automations see. Every
+   * candidate is decided again on each fresh read and written in one compare-and-swap, so a
+   * second tick finds nothing left to do. Schedule it with `node ace inbox:tick`.
+   */
+  async tick(now: DateTime = DateTime.now()): Promise<TickReport> {
+    const Ticket = await this.#config.model('ticket')
+    const automations: TickReport['automations'] = {}
+
+    for (const automation of this.#config.automations) {
+      if (automation.on !== 'tick') continue
+
+      const candidates = await Ticket.query()
+        .where(whereCandidates(Ticket, automation.candidates({ now })))
+        .orderBy('id')
+        .select('id')
+
+      const system: Actor = { kind: 'system', source: automation.name }
+      let changed = 0
+
+      for (const { id } of candidates) {
+        try {
+          const result = await this.#write(id, system, {
+            decide: () => [],
+            automations: { list: [automation], now },
+          })
+
+          if (result.outcome === 'changed') changed++
+        } catch (error) {
+          this.#logger.error(
+            { err: error, automation: automation.name, ticketId: id },
+            'inbox: a tick automation failed on a ticket',
+          )
+        }
+      }
+
+      const counts = automations[automation.name] ?? { candidates: 0, changed: 0 }
+
+      automations[automation.name] = {
+        candidates: counts.candidates + candidates.length,
+        changed: counts.changed + changed,
+      }
+    }
+
+    return { automations, recovered: await this.recover() }
+  }
+
+  /**
    * Queues again the work a lost task left behind, such as after a restart. That is stored
    * webhooks never ingested and pending messages no dispatch owns, each older than a dispatch
-   * lease so the task that made it had its chance. Run it periodically.
+   * lease so the task that made it had its chance, newest first and `RECOVER_BATCH` of each at
+   * most. Work older than `GIVE_UP_AFTER_MS` is marked failed instead, so work that keeps
+   * failing stops. `tick` runs it.
    */
-  async recover() {
+  async recover(): Promise<RecoverReport> {
     const ChannelEvent = await this.#config.model('channelEvent')
     const Message = await this.#config.model('message')
     const now = DateTime.now()
     const stale = sqlTime(Message, now.minus({ milliseconds: DISPATCH_LEASE_MS }))
+    const expired = sqlTime(Message, now.minus({ milliseconds: GIVE_UP_AFTER_MS }))
+    const unprocessed = () => ChannelEvent.query().whereNull('processedAt').whereNull('failedAt')
+    const claimable = () => Message.query().where(whereClaimable(Message, now))
 
-    const events = await ChannelEvent.query()
-      .whereNull('processedAt')
-      .where('receivedAt', '<', stale)
+    const deadEvents = await unprocessed()
+      .where('receivedAt', '<', expired)
+      .update({ failedAt: sqlTime(ChannelEvent, now) })
+
+    const deadMessages = await claimable()
+      .where('sentAt', '<', expired)
+      .orderBy('id', 'desc')
+      .limit(RECOVER_BATCH)
       .select('id')
 
-    const messages = await Message.query()
-      .where(whereClaimable(Message, now))
+    let expiredMessages = 0
+
+    for (const { id } of deadMessages) {
+      const updated = await claimable()
+        .where('id', id)
+        .update({ status: 'failed', failureCode: 'expired' })
+
+      if (affectedRows(updated) === 0) continue
+
+      expiredMessages++
+      await this.#announce(id, 'failed')
+    }
+
+    const events = await unprocessed()
+      .where('receivedAt', '<', stale)
+      .orderBy('id', 'desc')
+      .limit(RECOVER_BATCH)
+      .select('id')
+
+    const messages = await claimable()
       .where('sentAt', '<', stale)
+      .orderBy('id', 'desc')
+      .limit(RECOVER_BATCH)
       .select('id')
 
     for (const { id } of events) {
@@ -392,6 +488,12 @@ export class Inbox {
 
     for (const { id } of messages) {
       await this.#enqueue({ task: 'dispatch', messageId: id, attempt: 0 })
+    }
+
+    return {
+      channelEvents: events.length,
+      messages: messages.length,
+      gaveUp: { channelEvents: affectedRows(deadEvents), messages: expiredMessages },
     }
   }
 
@@ -932,7 +1034,7 @@ export class Inbox {
     const ChannelEvent = await this.#config.model('channelEvent')
     const event = await ChannelEvent.find(id)
 
-    if (event === null || event.processedAt !== null) return
+    if (event === null || event.processedAt !== null || event.failedAt !== null) return
 
     const Channel = await this.#config.model('channel')
     const channel = await Channel.findOrFail(event.channelId)

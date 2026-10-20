@@ -12,6 +12,7 @@ export async function configure(command: Configure) {
 
   await codemods.updateRcFile(rcFile => {
     rcFile.addProvider('@enzopita/adonisjs-inbox/inbox_provider')
+    rcFile.addCommand('@enzopita/adonisjs-inbox/commands')
   })
 
   await codemods.makeUsingStub(stubsRoot, 'config/inbox.stub', {})
@@ -23,7 +24,8 @@ export async function configure(command: Configure) {
 
   command.ui
     .instructions()
-    .heading('Create the inbox tables, which also regenerates database/schema.ts')
+    .heading('Create the inbox tables, then run the tick every minute from cron or a scheduler')
     .add('node ace migration:run')
+    .add('node ace inbox:tick')
     .render()
 }
