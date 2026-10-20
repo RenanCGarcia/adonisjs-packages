@@ -1,10 +1,19 @@
+import { execFile } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
+import { promisify } from 'node:util'
 
 import { test } from '@japa/runner'
 
 import { agent, playgroundUrl, queue, servePlayground, type Agent } from './helpers/http.ts'
 
+const playground = new URL('../../../playground/', import.meta.url)
+const run = promisify(execFile)
+
 type Status = 'queued' | 'in_progress' | 'closed'
+
+const SEEDED_AGENTS = ['ana', 'bruno', 'carla', 'diego', 'elisa', 'felipe'].map(
+  name => `${name}@inbox.test`,
+)
 
 interface Row {
   id: number
@@ -239,5 +248,67 @@ test.group('the console API', group => {
     assert.deepEqual(listedQueue, { ...listedQueue!, members: 1, queued: 1, inProgress: 1 })
     assert.equal(listedChannel?.name, 'Console')
     assert.equal(listedChannel?.defaultQueue.id, queueId)
+  })
+})
+
+test.group('inbox:seed', group => {
+  servePlayground(group)
+
+  test('seeds agents who can log in and tickets in every status, and a rerun changes nothing', async ({
+    assert,
+  }) => {
+    await run('node', ['ace', 'inbox:seed'], { cwd: playground })
+
+    const login = await fetch(playgroundUrl('/api/v1/auth/login'), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ email: 'ana@inbox.test', password: 'inbox-password' }),
+    })
+
+    // SAFETY: the login route answers with the user's access token.
+    const { data } = (await login.json()) as { data: { token: string } }
+
+    // SAFETY: each path read below answers with the type its caller names.
+    const get = async <T>(path: string): Promise<T> =>
+      (
+        await fetch(playgroundUrl(path), { headers: { authorization: `Bearer ${data.token}` } })
+      ).json() as Promise<T>
+
+    const channels = await get<{ data: Array<{ id: number; name: string }> }>('/inbox/channels')
+    const seeded = channels.data.filter(channel => ['WhatsApp', 'Site chat'].includes(channel.name))
+
+    const snapshot = async () =>
+      Promise.all(
+        seeded.map(async channel =>
+          (await get<List>(`/inbox/tickets?channelId=${channel.id}&perPage=100`)).data.map(row => [
+            row.id,
+            row.status,
+            row.assignee?.name ?? null,
+          ]),
+        ),
+      )
+
+    const before = await snapshot()
+    await run('node', ['ace', 'inbox:seed'], { cwd: playground })
+    const after = await snapshot()
+
+    const statuses = new Set(before.flat().map(([, status]) => status))
+    const agents = await get<{ data: AgentView[] }>('/inbox/attendants')
+    const seededAgents = agents.data.filter(view => SEEDED_AGENTS.includes(view.email))
+
+    assert.equal(login.status, 200)
+    assert.deepEqual(seeded.map(channel => channel.name).sort(), ['Site chat', 'WhatsApp'])
+    assert.isAtLeast(before.flat().length, 20)
+    assert.deepEqual(
+      [...statuses].sort((a, b) => String(a).localeCompare(String(b))),
+      ['closed', 'in_progress', 'queued'],
+    )
+    assert.isTrue(
+      before.flat().some(([, , name]) => name === 'triage'),
+      'a bot holds a ticket',
+    )
+    assert.equal(seededAgents.length, SEEDED_AGENTS.length)
+    assert.isTrue(seededAgents.every(view => view.queues.length > 0))
+    assert.deepEqual(after, before)
   })
 })
