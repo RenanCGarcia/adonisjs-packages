@@ -1,0 +1,59 @@
+{
+  "name": "@enzopita/adonisjs-inbox-flows",
+  "version": "0.0.0",
+  "description": "Deterministic chat flows for @enzopita/adonisjs-inbox: node registry, graph checks and a pure interpreter",
+  "keywords": [
+    "adonisjs",
+    "chatbot",
+    "flows",
+    "helpdesk",
+    "inbox"
+  ],
+  "license": "MIT",
+  "author": "Enzo Pita <enzo@enzopita.com>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/enzopita/adonisjs-packages.git",
+    "directory": "packages/inbox-flows"
+  },
+  "files": [
+    "build",
+    "!build/bin",
+    "!build/tests"
+  ],
+  "type": "module",
+  "exports": {
+    ".": "./build/index.js",
+    "./graph": "./build/src/graph/main.js"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "rm -rf build && tsc -p tsconfig.build.json",
+    "test": "pnpm run build && node --max-old-space-size=1024 --import=@poppinss/ts-exec --enable-source-maps bin/test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@adonisjs/core": "catalog:",
+    "@adonisjs/tsconfig": "catalog:",
+    "@enzopita/adonisjs-inbox": "workspace:*",
+    "@japa/assert": "catalog:",
+    "@japa/runner": "catalog:",
+    "@poppinss/ts-exec": "catalog:",
+    "@types/luxon": "catalog:",
+    "@types/node": "catalog:",
+    "@vinejs/vine": "catalog:",
+    "luxon": "catalog:",
+    "typescript": "catalog:"
+  },
+  "peerDependencies": {
+    "@adonisjs/core": "^7.6.0",
+    "@enzopita/adonisjs-inbox": "workspace:^",
+    "@vinejs/vine": "^4.4.0",
+    "luxon": "^3.7.0"
+  },
+  "engines": {
+    "node": ">=24.0.0"
+  }
+}
