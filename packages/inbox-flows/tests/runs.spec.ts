@@ -161,6 +161,38 @@ test.group('flow runs', group => {
     assert.deepInclude(await ticketRow(ticketId), { status: 'queued', assignee_id: null })
   })
 
+  test('a ticket that left the bot and came back unnoticed ends the run it had', async ({
+    assert,
+  }) => {
+    const sales = await newQueue('sales')
+    const { flowId } = await flowsApp.published(screening(sales))
+    const channel = await channelIn(flowsApp.app, 'flows')
+    const inbox = await flowsApp.app.container.make('inbox')
+    const emitter = await flowsApp.app.container.make('emitter')
+
+    await flowsApp.bind(flowId, channel.channelId)
+    await channel.write('hi')
+
+    const ticketId = await channel.openTicket()
+    const bot = await inbox.attendants.bot('flows')
+
+    // A lost ticket_changed event, so only the bot's turn can tell the run is over.
+    emitter.fake(['inbox:ticket_changed'])
+
+    try {
+      await inbox.tickets.apply(ticketId, { gesture: 'return' }, SYSTEM)
+      await inbox.tickets.apply(ticketId, { gesture: 'assign', to: bot.id }, SYSTEM)
+    } finally {
+      emitter.restore()
+    }
+
+    assert.deepEqual(sent(), ['How old are you?'])
+    assert.containsSubset(await flowsApp.flows.runs.forTicket(ticketId), [
+      { status: 'ended', reason: 'taken_over' },
+    ])
+    assert.deepInclude(await ticketRow(ticketId), { status: 'queued', assignee_id: null })
+  })
+
   test('a delay wakes the run once it passed, and a repeated wake does nothing', async ({
     assert,
   }) => {
