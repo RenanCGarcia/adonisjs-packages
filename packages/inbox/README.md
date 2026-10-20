@@ -103,6 +103,7 @@ if (result.outcome === 'rejected') return response.conflict({ reason: result.rea
 | `tickets.apply(id, gesture, actor)`            | `assume`, `assign`, `transfer`, `return` or `close`. Returns `changed`, `unchanged` or `rejected` with a reason |
 | `tickets.markRead(id, attendant)`              | Zeroes the unread count when the attendant holds the ticket                                                     |
 | `tickets.open(conversationId, queueId, actor)` | Opens a queued ticket, or returns the one already open in that conversation                                     |
+| `tickets.wake(id, bot, token, { in? })`        | Runs a `wake` turn of that bot after `in`, if it still holds the ticket then. See [Bots](#bots)                 |
 | `attendants.forUser(userId)` / `.bot(key)`     | The attendant row of a user or of a bot from `config.bots`, created on first use                                |
 | `attendants.deactivate(attendant)`             | Marks it inactive and returns every ticket it holds to its queue                                                |
 | `queues.addMember(queueId, attendant)`         | Adds the membership a human needs to hold tickets in that queue                                                 |
@@ -126,7 +127,7 @@ A channel adapter implements `ChannelAdapter`: `verify` and `parse` a webhook, a
 
 Ingest writes an inbound message as the system actor `ingest`. A ticket it opens runs the `ticket_opened` automations in the opening transaction, and the message runs the `message_received` ones in its own write.
 
-`@enzopita/adonisjs-inbox/testing` exports `FakeChannelAdapter`, `fakeWebhookBody` and `channelAdapterContract`, the Japa suite every adapter should pass.
+`@enzopita/adonisjs-inbox/testing` exports `FakeChannelAdapter`, `fakeWebhookBody` and `channelAdapterContract`, the Japa suite every adapter should pass. For specs that drive a real app, such as a package's playground, it also exports `bootApp(appRoot, inboxConfig)`, which boots the app in the test process on its SQLite file in `tmp/db.sqlite3`, `migrateApp(appRoot)`, `modelsIn(appRoot)` for the models `configure` writes, `channelIn(app)`, which inserts a queue and a fake channel and writes in as a contact through the webhook entry, and `eventually(condition)`, which waits on a delayed task.
 
 ## Bots
 
@@ -176,7 +177,10 @@ export default class TriageBot implements Bot<TriageState> {
 You never call a bot. A ticket reaches it through `{ gesture: 'assign', to: bot.id }`, where `bot = await inbox.attendants.bot('triage')`, or through an automation. From then on the package runs a turn:
 
 - after each inbound message on a ticket the bot holds, once `debounce` passed without a newer message, with `trigger: 'message'`;
-- when the bot gets the ticket from a human or an automation, with `trigger: 'assigned'`. A bot handing the ticket to another bot leaves that one to the next message, so two bots never pass a ticket back and forth.
+- when the bot gets the ticket from a human or an automation, with `trigger: 'assigned'`. A bot handing the ticket to another bot leaves that one to the next message, so two bots never pass a ticket back and forth;
+- when you call `inbox.tickets.wake(ticketId, 'triage', token, { in: { minutes: 10 } })`, with `trigger: 'wake'` and that `token`, after the delay and without the debounce. The turn does nothing unless the bot still holds the ticket then. Whether the wake is still due is the bot's call, made from the token, such as a reminder it has since cancelled. Through `tasks.queue()` the delay survives a restart, and through `tasks.inline()` it doesn't.
+
+Every turn also carries the ticket's `channel` (`{ id, provider }`) and `contactId`.
 
 `unanswered` holds the inbound messages since the last reply by an attendant, human or bot. A turn answers with one of:
 
@@ -192,6 +196,30 @@ You never call a bot. A ticket reaches it through `{ gesture: 'assign', to: bot.
 - When a message arrived meanwhile, the turn runs again with the longer batch, three times at most, and then commits its last answer over the latest version.
 - A committed turn never runs again, and a turn delivered twice finds nothing to do, so a reply goes out once.
 - A turn that throws is retried with backoff, four attempts in all, and a `wait` uses one of them.
+
+A `reply` or `silent` can also carry `within`, the bot's own writes in the turn's transaction, made after its replies are stored. They land with the turn or roll back with it, and `later` runs work after the commit:
+
+```ts
+return {
+  kind: 'reply',
+  messages: [{ kind: 'text', text: 'Booked for Tuesday.' }],
+  state,
+  within: async (trx, ticket, later) => {
+    const booking = await Booking.find(bookingId, { client: trx })
+
+    // Moved since the turn read it
+    if (booking === null || booking.revision !== revision) return 'stale'
+
+    booking.merge({ status: 'confirmed', revision: revision + 1 })
+    await booking.save()
+    later(() => emitter.emit('booking:confirmed', { ticketId: ticket.id }))
+
+    return 'ok'
+  },
+}
+```
+
+`within` returns `stale` when a row of the bot's moved since the turn read it. Nothing commits, and the turn runs again on a fresh read, three times at most, like a turn whose batch grew. A turn still stale after that is dropped and logged, with nothing sent. A `within` that throws rolls back the whole turn, which is then retried like any turn that throws.
 
 The bot's state is kept per bot attendant on the ticket, so a bot that gets the ticket back resumes where it left off. A human takes it back at any time with `{ gesture: 'assume' }`, or by replying.
 

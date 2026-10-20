@@ -1,0 +1,5 @@
+---
+'@enzopita/adonisjs-inbox': minor
+---
+
+Add bot extension points. A `reply` or `silent` bot answer can carry `within(trx, ticket, later)`, the bot's own writes in the turn's transaction after its replies are stored, so they commit or roll back with the turn. It returns `ok`, or `stale` to roll back and run the turn again on a fresh read, up to the rerun limit, after which the turn is dropped with nothing sent. `inbox.tickets.wake(id, bot, token, { in })` runs a turn with `trigger: 'wake'` and the token after the delay, only while that bot holds the ticket, so `BotTurn` is now a union and `BotTrigger` gains `{ kind: 'wake', token }`. Every turn also carries the ticket's `channel` (`{ id, provider }`) and `contactId`. `Later` and `BotWithin` are exported. `@enzopita/adonisjs-inbox/testing` now exports `bootApp`, `migrateApp`, `modelsIn`, `channelIn` and `eventually`, so other packages' specs can drive an app the way the inbox's do.
