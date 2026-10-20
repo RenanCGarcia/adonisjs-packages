@@ -1,13 +1,19 @@
 import type { ConfigProvider } from '@adonisjs/core/types'
 import type { DateTime } from 'luxon'
 
-import type { ChannelId, JsonValue, MessageStatus } from '../types.ts'
+import type { ChannelId, JsonValue, MessageContent, MessageKind, MessageStatus } from '../types.ts'
+
+/**
+ * The capability an adapter declares for each kind of content it can send.
+ */
+export const SENDS = { text: 'send_text' } as const satisfies Record<MessageKind, string>
 
 /**
  * What an adapter may declare beyond the port every adapter implements. The ingest drops an
- * event whose capability the adapter doesn't declare.
+ * event whose capability the adapter doesn't declare, and a send of a kind it doesn't declare is
+ * rejected.
  */
-export const CAPABILITIES = ['outbound_echo'] as const
+export const CAPABILITIES = ['outbound_echo', ...Object.values(SENDS)] as const
 
 export type Capability = (typeof CAPABILITIES)[number]
 
@@ -54,14 +60,14 @@ export type NormalizedEvent =
       externalId: string
       from: ContactIdentity
       profileName?: string
-      text: string
+      content: MessageContent
       sentAt: DateTime
     }
   | {
       type: 'message_echoed'
       externalId: string
       to: ContactIdentity
-      text: string
+      content: MessageContent
       sentAt: DateTime
     }
   | {
@@ -75,7 +81,10 @@ export type NormalizedEvent =
 
 export interface OutgoingMessage {
   to: ContactIdentity
-  text: string
+  /**
+   * Only of a kind whose capability the adapter declares.
+   */
+  content: MessageContent
   /**
    * The outbox's idempotency key. An adapter whose provider takes one should pass it along and
    * return it in status events.

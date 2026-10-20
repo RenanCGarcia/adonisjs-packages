@@ -14,6 +14,8 @@ import { boot, migratePlayground, playgroundModels } from './helpers/app.ts'
 
 const fake = new FakeChannelAdapter()
 
+const receiveOnly = new FakeChannelAdapter(['outbound_echo'])
+
 test.group('outbox', group => {
   let app: ApplicationService
   let inbox: Inbox
@@ -25,7 +27,7 @@ test.group('outbox', group => {
       defineConfig({
         models: playgroundModels(),
         bots: [],
-        channels: { fake: adapters.fake(fake) },
+        channels: { fake: adapters.fake(fake), receive_only: adapters.fake(receiveOnly) },
         tasks: tasks.inline(),
       }),
     )
@@ -34,20 +36,23 @@ test.group('outbox', group => {
     return () => app.terminate()
   })
 
-  group.each.setup(() => fake.reset())
+  group.each.setup(() => {
+    fake.reset()
+    receiveOnly.reset()
+  })
 
   /**
    * A contact writes in through the real webhook entry, and an agent of the channel's queue
    * replies to the ticket that opened.
    */
-  async function inboundTicket() {
+  async function inboundTicket(provider = 'fake') {
     const db = await app.container.make('lucid.db')
     const now = '2026-01-05 10:00:00'
     const token = randomUUID()
     const [queueId] = await db.table('inbox_queues').insert({ name: 'support', created_at: now })
 
     await db.table('inbox_channels').insert({
-      provider: 'fake',
+      provider,
       name: 'test',
       default_queue_id: queueId,
       webhook_token: token,
@@ -63,7 +68,7 @@ test.group('outbox', group => {
         type: 'message_received',
         externalId: randomUUID(),
         from: { address },
-        text: 'hello',
+        content: { kind: 'text', text: 'hello' },
         sentAt: DateTime.now(),
       }),
     })
@@ -107,14 +112,14 @@ test.group('outbox', group => {
       return { status: 'accepted', externalId: 'wamid.sent' }
     }
 
-    const result = await inbox.messages.send(ticketId, { text: 'On it!' }, agent)
+    const result = await inbox.messages.send(ticketId, { kind: 'text', text: 'On it!' }, agent)
 
     assert.equal(receipt, 'accepted')
     assert.equal(result.outcome, 'queued')
     assert.deepEqual(during, [{ status: 'pending', claimed: true }])
     assert.deepEqual(
-      fake.sends.map(({ message }) => ({ to: message.to.address, text: message.text })),
-      [{ to: address, text: 'On it!' }],
+      fake.sends.map(({ message }) => ({ to: message.to.address, content: message.content })),
+      [{ to: address, content: { kind: 'text', text: 'On it!' } }],
     )
 
     const row = result.outcome === 'queued' ? await messageRow(result.messageId) : null
@@ -139,7 +144,7 @@ test.group('outbox', group => {
       return { status: 'accepted', externalId: randomUUID() }
     }
 
-    const result = await inbox.messages.send(ticketId, { text: 'Once' }, agent)
+    const result = await inbox.messages.send(ticketId, { kind: 'text', text: 'Once' }, agent)
 
     if (result.outcome !== 'queued') throw new Error(`the send was ${result.outcome}`)
 
@@ -156,7 +161,7 @@ test.group('outbox', group => {
       throw new Error('connection refused')
     }
 
-    const result = await inbox.messages.send(ticketId, { text: 'Retry me' }, agent)
+    const result = await inbox.messages.send(ticketId, { kind: 'text', text: 'Retry me' }, agent)
 
     if (result.outcome !== 'queued') throw new Error(`the send was ${result.outcome}`)
 
@@ -175,7 +180,7 @@ test.group('outbox', group => {
 
     fake.respond = async () => ({ status: 'rejected', code: 'recipient_invalid' })
 
-    const result = await inbox.messages.send(ticketId, { text: 'Nope' }, agent)
+    const result = await inbox.messages.send(ticketId, { kind: 'text', text: 'Nope' }, agent)
 
     if (result.outcome !== 'queued') throw new Error(`the send was ${result.outcome}`)
 
@@ -183,5 +188,21 @@ test.group('outbox', group => {
       status: 'failed',
       failure_code: 'recipient_invalid',
     })
+  })
+
+  test('content the adapter cannot send is rejected and stores nothing', async ({ assert }) => {
+    const { agent, ticketId } = await inboundTicket('receive_only')
+
+    const result = await inbox.messages.send(ticketId, { kind: 'text', text: 'Hi' }, agent)
+    const db = await app.container.make('lucid.db')
+
+    const outbound = await db
+      .from('inbox_messages')
+      .where('ticket_id', ticketId)
+      .where('direction', 'outbound')
+
+    assert.deepEqual(result, { outcome: 'rejected', reason: 'unsupported_content' })
+    assert.lengthOf(outbound, 0)
+    assert.lengthOf(receiveOnly.sends, 0)
   })
 })

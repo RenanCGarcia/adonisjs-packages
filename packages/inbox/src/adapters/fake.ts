@@ -36,7 +36,7 @@ export class FakeChannelAdapter implements ChannelAdapter {
   readonly sends: FakeSend[] = []
   respond: FakeResponder = accept
 
-  constructor(capabilities: readonly Capability[] = ['outbound_echo']) {
+  constructor(capabilities: readonly Capability[] = ['outbound_echo', 'send_text']) {
     this.capabilities = capabilities
   }
 

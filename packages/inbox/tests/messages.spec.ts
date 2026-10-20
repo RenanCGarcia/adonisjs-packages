@@ -65,7 +65,7 @@ function received(address: string, externalId: string = randomUUID()): Normalize
     externalId,
     from: { address },
     profileName: 'Maria',
-    text: 'hello',
+    content: { kind: 'text', text: 'hello' },
     sentAt: DateTime.fromISO('2026-01-05T10:00:00.000Z'),
   }
 }
@@ -92,7 +92,7 @@ async function inboundTicket(admin: Agent, ...members: Agent[]) {
 
 function messagesOf(ticketId: number) {
   return select(
-    'SELECT direction, body, status, external_id, author_id, client_ref, dispatched_at FROM inbox_messages WHERE ticket_id = ? ORDER BY id',
+    'SELECT direction, kind, body, status, external_id, author_id, client_ref, dispatched_at FROM inbox_messages WHERE ticket_id = ? ORDER BY id',
     ticketId,
   )
 }
@@ -136,6 +136,7 @@ test.group('messages over HTTP', group => {
     assert.deepEqual(messagesOf(ticketId), [
       {
         direction: 'inbound',
+        kind: 'text',
         body: 'hello',
         status: null,
         external_id: 'wamid.first',
@@ -208,7 +209,12 @@ test.group('messages over HTTP', group => {
     assert.deepInclude(reply.ticket, { unreadCount: 0 })
     assert.equal(reply.ticket.state.status, 'in_progress')
     assert.equal(inbound?.direction, 'inbound')
-    assert.deepInclude(outbound, { direction: 'outbound', body: 'On it!', status: 'sent' })
+    assert.deepInclude(outbound, {
+      direction: 'outbound',
+      kind: 'text',
+      body: 'On it!',
+      status: 'sent',
+    })
     assert.isString(outbound?.external_id)
     assert.isString(outbound?.dispatched_at)
     assert.deepEqual(
@@ -285,7 +291,7 @@ test.group('messages over HTTP', group => {
       type: 'message_echoed',
       externalId,
       to: { address },
-      text,
+      content: { kind: 'text', text },
       sentAt: DateTime.fromISO('2026-01-05T10:05:00.000Z'),
     })
 

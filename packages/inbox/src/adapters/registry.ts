@@ -1,5 +1,12 @@
 import { InboxError } from '../errors.ts'
-import { CAPABILITIES, type Capability, type ChannelAdapter, type NormalizedEvent } from './port.ts'
+import type { MessageKind } from '../types.ts'
+import {
+  CAPABILITIES,
+  SENDS,
+  type Capability,
+  type ChannelAdapter,
+  type NormalizedEvent,
+} from './port.ts'
 
 const REQUIRED: Partial<Record<NormalizedEvent['type'], Capability>> = {
   message_echoed: 'outbound_echo',
@@ -36,6 +43,10 @@ export class AdapterRegistry {
     }
 
     return adapter
+  }
+
+  canSend(provider: string, kind: MessageKind) {
+    return this.get(provider).capabilities.includes(SENDS[kind])
   }
 
   /**

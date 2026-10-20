@@ -162,6 +162,7 @@ export class InboxMessageSchema extends BaseModel {
     'externalId',
     'failureCode',
     'id',
+    'kind',
     'sentAt',
     'status',
     'ticketId',
@@ -188,6 +189,8 @@ export class InboxMessageSchema extends BaseModel {
   declare failureCode: string | null
   @column({ isPrimary: true })
   declare id: number
+  @column()
+  declare kind: string
   @column.dateTime()
   declare sentAt: DateTime
   @column()

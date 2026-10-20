@@ -18,6 +18,7 @@ import {
   unitOfWork,
   type Later,
 } from './internal/unit_of_work.ts'
+import { toContentColumns } from './message/content.ts'
 import { advanceableFrom } from './message/status.ts'
 import type { InboxModelOf } from './mixins/main.ts'
 import { retryOf, type InboxTask, type TaskDriver } from './tasks.ts'
@@ -41,9 +42,9 @@ import type {
   Gesture,
   HostUserId,
   IngestReceipt,
+  MessageContent,
   MessageId,
   MessageStatus,
-  OutgoingText,
   QueueId,
   SendMessageOptions,
   SendOutcome,
@@ -151,11 +152,12 @@ export class Inbox {
      * human replying to a queued ticket, or to one a bot holds, assumes it in the same write, and
      * a reply to a ticket another human holds is rejected. The message is stored pending in that
      * write and dispatched after the commit. A retry with the same `clientRef` returns the message
-     * the first call stored.
+     * the first call stored. Content of a kind the channel's adapter can't send is rejected
+     * before anything is written.
      */
     send: async (
       id: TicketId,
-      message: OutgoingText,
+      content: MessageContent,
       author: Attendant,
       options: SendMessageOptions = {},
     ): Promise<SendOutcome> => {
@@ -166,6 +168,14 @@ export class Inbox {
 
       if (replayed !== null) return this.#queued(id, replayed.id)
 
+      const Ticket = await this.#config.model('ticket')
+      // A ticket never changes conversation, so its channel can be read outside the write.
+      const channel = await this.#channelOf((await Ticket.findOrFail(id)).conversationId)
+
+      if (!this.#config.adapters.canSend(channel.provider, content.kind)) {
+        return { outcome: 'rejected', reason: 'unsupported_content' }
+      }
+
       const now = DateTime.now()
       let result: ApplyResult
 
@@ -174,15 +184,13 @@ export class Inbox {
           decide: () => ({ gesture: 'reply', at: now }),
           authorizeAs: { gesture: 'send' },
           within: async (trx, ticket, later) => {
-            const channel = await this.#channelOf(ticket.conversationId, trx)
-
             const row = await Message.create(
               {
                 ...this.#config.ownership(channel),
                 conversationId: ticket.conversationId,
                 ticketId: ticket.id,
                 direction: 'outbound',
-                body: message.text,
+                ...toContentColumns(content),
                 status: 'pending',
                 authorId: author.id,
                 clientRef,
@@ -728,7 +736,7 @@ export class Inbox {
                 conversationId: conversation.id,
                 ticketId: current.id,
                 direction: 'inbound',
-                body: event.text,
+                ...toContentColumns(event.content),
                 status: null,
                 externalId: event.externalId,
                 sentAt: event.sentAt,
@@ -793,7 +801,7 @@ export class Inbox {
         conversationId: conversation.id,
         ticketId: open?.id ?? null,
         direction: 'outbound',
-        body: event.text,
+        ...toContentColumns(event.content),
         status: 'sent',
         externalId: event.externalId,
         sentAt: event.sentAt,
@@ -893,12 +901,12 @@ export class Inbox {
       .first()
   }
 
-  async #channelOf(conversationId: ConversationId, trx: TransactionClientContract) {
+  async #channelOf(conversationId: ConversationId) {
     const Conversation = await this.#config.model('conversation')
     const Channel = await this.#config.model('channel')
-    const conversation = await Conversation.findOrFail(conversationId, { client: trx })
+    const conversation = await Conversation.findOrFail(conversationId)
 
-    return Channel.findOrFail(conversation.channelId, { client: trx })
+    return Channel.findOrFail(conversation.channelId)
   }
 
   async #queued(id: TicketId, messageId: MessageId): Promise<SendOutcome> {

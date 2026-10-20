@@ -9,7 +9,7 @@ export default class InboxMessagesController {
     const { text } = await request.validateUsing(messageValidator)
     const me = await inbox.attendants.forUser(auth.getUserOrFail().id)
 
-    const result = await inbox.messages.send(ticket.id, { text }, me, {
+    const result = await inbox.messages.send(ticket.id, { kind: 'text', text }, me, {
       clientRef: request.header('idempotency-key'),
     })
 

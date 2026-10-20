@@ -78,13 +78,15 @@ export async function dispatchMessage(
   let result: SendResult
 
   try {
-    result = await config.adapters
-      .get(channel.provider)
-      .send(
-        { id: channel.id, credentials: channel.credentials },
-        { to: { address: contact.address }, text: message.body, clientRef: message.clientRef },
-        { signal },
-      )
+    result = await config.adapters.get(channel.provider).send(
+      { id: channel.id, credentials: channel.credentials },
+      {
+        to: { address: contact.address },
+        content: message.content,
+        clientRef: message.clientRef,
+      },
+      { signal },
+    )
   } catch (error) {
     if (!signal.aborted) {
       await release()

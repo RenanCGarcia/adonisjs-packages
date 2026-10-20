@@ -199,6 +199,8 @@ export default class extends BaseSchema {
         .onDelete('CASCADE')
       table.integer('ticket_id').unsigned().nullable().references('inbox_tickets.id')
       table.string('direction').notNullable()
+      // What `body` holds depends on the kind, which is only `text` so far.
+      table.string('kind').notNullable()
       table.text('body').notNullable()
       table.string('status').nullable()
       table.integer('author_id').unsigned().nullable().references('inbox_attendants.id')

@@ -4,6 +4,7 @@ export { adapters } from './src/adapters/main.ts'
 
 export {
   CAPABILITIES,
+  SENDS,
   type AdapterChannel,
   type AdapterProvider,
   type Capability,

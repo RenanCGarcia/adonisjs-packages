@@ -1,6 +1,7 @@
 import { test } from '@japa/runner'
 import { DateTime } from 'luxon'
 
+import type { OutgoingMessage } from '../src/adapters/port.ts'
 import { FakeChannelAdapter, channelAdapterContract, fakeWebhookBody } from '../src/testing/main.ts'
 import type { ChannelId } from '../src/types.ts'
 
@@ -27,7 +28,7 @@ test.group('fake channel adapter', () => {
         type: 'message_received',
         externalId: 'wamid.1',
         from: { address: '+5511999990000' },
-        text: 'hello',
+        content: { kind: 'text', text: 'hello' },
         sentAt,
       }),
     )
@@ -38,7 +39,12 @@ test.group('fake channel adapter', () => {
 
   test('send records the message and answers with the scripted result', async ({ assert }) => {
     const fake = new FakeChannelAdapter()
-    const message = { to: { address: '+5511999990000' }, text: 'hi', clientRef: 'ref-1' }
+
+    const message: OutgoingMessage = {
+      to: { address: '+5511999990000' },
+      content: { kind: 'text', text: 'hi' },
+      clientRef: 'ref-1',
+    }
 
     fake.respond = async () => ({ status: 'rejected', code: 'recipient_invalid' })
 

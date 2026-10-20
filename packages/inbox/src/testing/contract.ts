@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 
 import { test } from '@japa/runner'
 
-import type { AdapterChannel, ChannelAdapter } from '../adapters/port.ts'
+import type { AdapterChannel, ChannelAdapter, OutgoingMessage } from '../adapters/port.ts'
 import { AdapterRegistry } from '../adapters/registry.ts'
 import type { ChannelId } from '../types.ts'
 
@@ -42,7 +42,12 @@ export function channelAdapterContract(
 
     test('send rejects once its signal aborted', async () => {
       const signal = AbortSignal.abort()
-      const message = { to: { address: '+5511999990000' }, text: 'hi', clientRef: 'contract' }
+
+      const message: OutgoingMessage = {
+        to: { address: '+5511999990000' },
+        content: { kind: 'text', text: 'hi' },
+        clientRef: 'contract',
+      }
 
       await assert.rejects(() => make().send(channel, message, { signal }))
     })

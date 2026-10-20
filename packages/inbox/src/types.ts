@@ -137,9 +137,13 @@ export type ApplyResult =
 
 export type MessageStatus = 'pending' | 'sent' | 'delivered' | 'read' | 'played' | 'failed'
 
-export interface OutgoingText {
-  text: string
-}
+/**
+ * What a message says, in both directions. Only `text` exists so far. Each new kind is a new
+ * variant, and the compiler then points at every switch that has to handle it.
+ */
+export type MessageContent = { kind: 'text'; text: string }
+
+export type MessageKind = MessageContent['kind']
 
 export interface SendMessageOptions {
   /**
@@ -148,9 +152,13 @@ export interface SendMessageOptions {
   clientRef?: string
 }
 
+/**
+ * `unsupported_content` means the channel's adapter doesn't declare the capability to send that
+ * kind of content.
+ */
 export type SendOutcome =
   | { outcome: 'queued'; messageId: MessageId; ticket: TicketSnapshot }
-  | { outcome: 'rejected'; reason: Rejection }
+  | { outcome: 'rejected'; reason: Rejection | 'unsupported_content' }
 
 export type IngestReceipt = 'accepted' | 'unknown_channel' | 'invalid_signature'
 
