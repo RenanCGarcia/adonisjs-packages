@@ -16,6 +16,8 @@ const fake = new FakeChannelAdapter()
 
 const receiveOnly = new FakeChannelAdapter(['outbound_echo'])
 
+let allowSends = true
+
 test.group('outbox', group => {
   let app: ApplicationService
   let inbox: Inbox
@@ -29,6 +31,7 @@ test.group('outbox', group => {
         bots: [],
         channels: { fake: adapters.fake(fake), receive_only: adapters.fake(receiveOnly) },
         tasks: tasks.inline(),
+        authorize: ({ operation }) => allowSends || operation.gesture !== 'send',
       }),
     )
     inbox = await app.container.make('inbox')
@@ -39,6 +42,7 @@ test.group('outbox', group => {
   group.each.setup(() => {
     fake.reset()
     receiveOnly.reset()
+    allowSends = true
   })
 
   /**
@@ -87,7 +91,7 @@ test.group('outbox', group => {
     await inbox.queues.addMember(queueId as QueueId, agent)
 
     // SAFETY: the id of the ticket row the ingest opened.
-    return { receipt, address, agent, channelId, ticketId: ticket.id as TicketId }
+    return { receipt, address, agent, channelId, token, ticketId: ticket.id as TicketId }
   }
 
   /**
@@ -298,5 +302,63 @@ test.group('outbox', group => {
       stored.map(row => row.external_id),
       [lostId],
     )
+  })
+
+  test('a send authorize refuses is forbidden and stores nothing', async ({ assert }) => {
+    const { agent, ticketId } = await inboundTicket()
+    const db = await app.container.make('lucid.db')
+
+    allowSends = false
+
+    const result = await inbox.messages.send(ticketId, { kind: 'text', text: 'Hi' }, agent)
+
+    const outbound = await db
+      .from('inbox_messages')
+      .where('ticket_id', ticketId)
+      .where('direction', 'outbound')
+
+    assert.deepEqual(result, { outcome: 'rejected', reason: 'forbidden' })
+    assert.lengthOf(outbound, 0)
+    assert.lengthOf(fake.sends, 0)
+  })
+
+  test('an echo of a send still in flight waits for it, then dedupes against it', async ({
+    assert,
+  }) => {
+    const { address, channelId, token, agent, ticketId } = await inboundTicket()
+    const db = await app.container.make('lucid.db')
+
+    fake.respond = async () => {
+      await inbox.ingest(token, {
+        headers: { 'x-fake-secret': 's3cret' },
+        rawBody: fakeWebhookBody({
+          type: 'message_echoed',
+          externalId: 'wamid.echoed',
+          to: { address },
+          content: { kind: 'text', text: 'Hi' },
+          sentAt: DateTime.now(),
+        }),
+      })
+
+      return { status: 'accepted', externalId: 'wamid.echoed' }
+    }
+
+    await inbox.messages.send(ticketId, { kind: 'text', text: 'Hi' }, agent)
+
+    const waiting = await db
+      .from('inbox_channel_events')
+      .where('channel_id', channelId)
+      .whereNull('processed_at')
+      .firstOrFail()
+
+    await inbox.run({ task: 'ingest', channelEventId: waiting.id, attempt: 1 })
+
+    const outbound = await db
+      .from('inbox_messages')
+      .where('ticket_id', ticketId)
+      .where('direction', 'outbound')
+      .select('external_id', 'status')
+
+    assert.deepEqual(outbound, [{ external_id: 'wamid.echoed', status: 'sent' }])
   })
 })
