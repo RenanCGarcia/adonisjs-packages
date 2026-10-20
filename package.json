@@ -6,7 +6,6 @@
   "type": "module",
   "scripts": {
     "prepare": "lefthook install",
-    "bootstrap": "turbo build --filter=./packages/* && pnpm --filter playground bootstrap",
     "build": "turbo build",
     "test": "turbo test",
     "test:pg": "sh scripts/test-pg.sh",

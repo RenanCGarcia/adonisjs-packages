@@ -7,14 +7,12 @@ services:
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: playground
     ports:
       - '55432:5432'
     volumes:
       - pgsql:/var/lib/postgresql
-      - ./docker/pgsql:/docker-entrypoint-initdb.d:ro
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U postgres -d playground_test']
+      test: ['CMD-SHELL', 'pg_isready -U postgres']
       interval: 2s
       timeout: 3s
       retries: 30

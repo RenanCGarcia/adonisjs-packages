@@ -41,8 +41,8 @@ export default defineConfig({
 
   overrides: [
     {
-      // The playground and the fixture apps hold the files AdonisJS and the packages scaffold.
-      files: ['playground/**', 'packages/*/tests/fixtures/app/**'],
+      // The fixture apps hold the files AdonisJS and the packages scaffold, kept as generated.
+      files: ['packages/*/tests/fixtures/app/**'],
       rules: Object.fromEntries(
         [
           'anti-slop/require-readable-spacing',

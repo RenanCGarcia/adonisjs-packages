@@ -5,5 +5,5 @@
   "access": "public",
   "baseBranch": "main",
   "updateInternalDependencies": "patch",
-  "ignore": ["playground"]
+  "ignore": ["inbox-fixture", "inbox-flows-fixture", "openapi-fixture"]
 }
