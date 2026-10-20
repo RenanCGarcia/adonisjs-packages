@@ -5,6 +5,7 @@ import { DateTime } from 'luxon'
 
 import type { NormalizedEvent } from '../src/adapters/port.ts'
 import { fakeWebhookBody } from '../src/testing/main.ts'
+import { eventually } from './helpers/channel.ts'
 import {
   agent,
   database,
@@ -41,8 +42,8 @@ function select(sql: string, ...params: Value[]) {
   }
 }
 
-async function channelIn(admin: Agent, queueId: number) {
-  return admin.post<Channel>('/inbox/channels', { queueId })
+async function channelIn(admin: Agent, queueId: number, provider = 'fake') {
+  return admin.post<Channel>('/inbox/channels', { queueId, provider })
 }
 
 async function webhook(
@@ -306,6 +307,63 @@ test.group('messages over HTTP', group => {
         ['inbound', 'hello', null],
         ['outbound', 'Hi', 'sent'],
         ['outbound', 'From my phone', 'sent'],
+      ],
+    )
+  })
+
+  test('the triage bot greets a contact on a triage channel, then hands the ticket back', async ({
+    assert,
+  }) => {
+    const admin = await agent()
+    const channel = await channelIn(admin, await queue(admin), 'triage')
+    const address = `+55${randomUUID()}`
+    const replies = () => messagesOf(ticketId).filter(message => message.direction === 'outbound')
+    const sent = () => replies().filter(message => message.status === 'sent').length
+
+    await webhook(channel, [received(address)])
+
+    const [row] = select(
+      `SELECT inbox_tickets.id FROM inbox_tickets
+       JOIN inbox_conversations ON inbox_conversations.id = inbox_tickets.conversation_id
+       WHERE inbox_conversations.channel_id = ?`,
+      channel.id,
+    )
+
+    const ticketId = Number(row?.id)
+
+    await eventually(() => sent() === 1, 5000)
+    await webhook(channel, [
+      {
+        type: 'message_received',
+        externalId: randomUUID(),
+        from: { address },
+        content: { kind: 'text', text: 'My order is late' },
+        sentAt: DateTime.now(),
+      },
+    ])
+    await eventually(() => sent() === 2, 5000)
+
+    const [ticket] = select('SELECT status FROM inbox_tickets WHERE id = ?', ticketId)
+
+    const handoffs = select(
+      `SELECT actor_kind, actor_source, note FROM inbox_ticket_events
+       WHERE ticket_id = ? AND type = 'assignment_changed' ORDER BY id`,
+      ticketId,
+    )
+
+    assert.deepEqual(
+      replies().map(message => [message.body, message.status]),
+      [
+        ['Hi! What do you need help with?', 'sent'],
+        ['Thanks! Someone from the team will take it from here.', 'sent'],
+      ],
+    )
+    assert.deepInclude(ticket, { status: 'queued' })
+    assert.deepEqual(
+      handoffs.map(event => ({ ...event })),
+      [
+        { actor_kind: 'system', actor_source: 'assign_on_open', note: null },
+        { actor_kind: 'bot', actor_source: null, note: 'My order is late' },
       ],
     )
   })
