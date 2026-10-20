@@ -4,8 +4,7 @@ import { test } from '@japa/runner'
 import { DateTime } from 'luxon'
 
 import type { NormalizedEvent } from '../src/adapters/port.ts'
-import { fakeWebhookBody } from '../src/testing/main.ts'
-import { eventually } from './helpers/channel.ts'
+import { eventually, fakeWebhookBody } from '../src/testing/main.ts'
 import {
   agent,
   database,

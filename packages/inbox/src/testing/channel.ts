@@ -3,8 +3,8 @@ import { randomUUID } from 'node:crypto'
 import type { ApplicationService } from '@adonisjs/core/types'
 import { DateTime } from 'luxon'
 
-import { fakeWebhookBody } from '../../src/testing/main.ts'
-import type { QueueId, TicketId } from '../../src/types.ts'
+import { fakeWebhookBody } from '../adapters/fake.ts'
+import type { QueueId, TicketId } from '../types.ts'
 
 /**
  * A channel on a fresh queue, inserted as the host's rows, and a contact writing in through the

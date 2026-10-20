@@ -7,10 +7,9 @@ import { automations, defineAutomation, type TicketMoment } from '../src/automat
 import type { Bot, BotTurn } from '../src/bots.ts'
 import { defineConfig } from '../src/define_config.ts'
 import type { Inbox } from '../src/inbox.ts'
-import { FakeChannelAdapter } from '../src/testing/main.ts'
+import { channelIn, FakeChannelAdapter } from '../src/testing/main.ts'
 import type { JsonValue, TicketId } from '../src/types.ts'
 import { boot, migratePlayground, playgroundModels } from './helpers/app.ts'
-import { channelIn } from './helpers/channel.ts'
 
 const fake = new FakeChannelAdapter()
 

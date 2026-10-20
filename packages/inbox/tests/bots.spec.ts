@@ -7,10 +7,9 @@ import { adapters } from '../src/adapters/main.ts'
 import type { Bot, BotReply, BotTurn } from '../src/bots.ts'
 import { defineConfig } from '../src/define_config.ts'
 import type { Inbox } from '../src/inbox.ts'
-import { FakeChannelAdapter } from '../src/testing/main.ts'
+import { channelIn, eventually, FakeChannelAdapter } from '../src/testing/main.ts'
 import type { Actor, JsonValue, TicketId } from '../src/types.ts'
 import { boot, migratePlayground, playgroundModels } from './helpers/app.ts'
-import { channelIn, eventually } from './helpers/channel.ts'
 
 const fake = new FakeChannelAdapter()
 
