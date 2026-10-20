@@ -82,6 +82,12 @@ const INGEST: Actor = { kind: 'system', source: 'ingest' }
 const BOT_RERUNS = 3
 
 /**
+ * Rolls back a bot turn whose `within` answered `stale`. Writing the same answer over a fresh
+ * ticket, as a `Conflict` would, can't help, so the turn runs again instead.
+ */
+class Stale extends Error {}
+
+/**
  * What a plan relied on that another writer could change before the write lands.
  */
 interface Reliance {
@@ -1393,7 +1399,8 @@ export class Inbox {
    * Reads the ticket and its unanswered messages, asks the bot outside any transaction, and
    * commits the answer guarded by the version it read. A turn whose bot lost the ticket meanwhile
    * is dropped. One whose batch grew runs again, and after `BOT_RERUNS` commits over the latest
-   * version. Once committed it never runs again, so its replies go out at most once.
+   * version. One whose `within` answered `stale` runs again too, and is dropped after
+   * `BOT_RERUNS`. Once committed it never runs again, so its replies go out at most once.
    */
   async #botTurn(task: BotTurnTask) {
     const found = await this.#botOf(task.botId)
@@ -1460,25 +1467,40 @@ export class Inbox {
 
         const replyChannel = channel
 
-        const result = await this.#write(ticket.id, attendant, {
-          version: run < BOT_RERUNS ? ticket.version : undefined,
-          decide: () => changes,
-          within: async (trx, next, later) => {
-            later(async () => {
-              committed = true
-            })
+        let result: ApplyResult
 
-            for (const content of sendable) {
-              await this.#storePending(
-                trx,
-                next,
-                replyChannel,
-                { content, authorId: attendant.id },
-                later,
-              )
-            }
-          },
-        })
+        try {
+          result = await this.#write(ticket.id, attendant, {
+            version: run < BOT_RERUNS ? ticket.version : undefined,
+            decide: () => changes,
+            within: async (trx, next, later) => {
+              later(async () => {
+                committed = true
+              })
+
+              for (const content of sendable) {
+                await this.#storePending(
+                  trx,
+                  next,
+                  replyChannel,
+                  { content, authorId: attendant.id },
+                  later,
+                )
+              }
+
+              if (
+                reply.within !== undefined &&
+                (await reply.within(trx, next, later)) === 'stale'
+              ) {
+                throw new Stale()
+              }
+            },
+          })
+        } catch (error) {
+          if (error instanceof Stale) continue
+
+          throw error
+        }
 
         if (result.outcome !== 'rejected') return
 

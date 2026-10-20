@@ -1,6 +1,7 @@
 import { setTimeout as sleep } from 'node:timers/promises'
 
 import type { ApplicationService } from '@adonisjs/core/types'
+import type { TransactionClientContract } from '@adonisjs/lucid/types/database'
 import { test } from '@japa/runner'
 
 import { adapters } from '../src/adapters/main.ts'
@@ -59,7 +60,19 @@ test.group('bot turns', group => {
     )
     inbox = await app.container.make('inbox')
 
-    return () => app.terminate()
+    const db = await app.container.make('lucid.db')
+
+    await db.connection().schema.dropTableIfExists('bot_notes')
+    await db.connection().schema.createTable('bot_notes', table => {
+      table.increments('id')
+      table.integer('ticket_id').notNullable()
+      table.string('note').notNullable()
+    })
+
+    return async () => {
+      await db.connection().schema.dropTable('bot_notes')
+      await app.terminate()
+    }
   })
 
   group.each.setup(() => {
@@ -86,6 +99,17 @@ test.group('bot turns', group => {
   }
 
   const sent = () => fake.sends.map(({ message }) => message.content)
+
+  async function notes(id: TicketId, client?: TransactionClientContract) {
+    const db = client ?? (await app.container.make('lucid.db'))
+    const rows = await db.from('bot_notes').where('ticket_id', id).orderBy('id').select('note')
+
+    return rows.map(({ note }) => note)
+  }
+
+  async function note(trx: TransactionClientContract, id: TicketId, text: string) {
+    await trx.table('bot_notes').insert({ ticket_id: id, note: text })
+  }
 
   async function handToBot(ticketId: TicketId) {
     const bot = await inbox.attendants.bot('scripted')
@@ -282,5 +306,129 @@ test.group('bot turns', group => {
     assert.equal(calls, 2)
     assert.deepEqual(sent(), [{ kind: 'text', text: 'Hi!' }])
     assert.lengthOf(await outbound(ticketId), 1)
+  })
+
+  test('a within writes its rows in the same commit as the reply', async ({ assert }) => {
+    const channel = await channelIn(app)
+
+    await channel.write('hello')
+
+    const ticketId = await channel.openTicket()
+
+    script = async () => ({
+      ...reply('Hi!'),
+      within: async (trx, ticket) => {
+        await note(trx, ticket.id, 'greeted')
+
+        return 'ok'
+      },
+    })
+
+    await handToBot(ticketId)
+
+    assert.deepEqual(await notes(ticketId), ['greeted'])
+    assert.deepEqual(sent(), [{ kind: 'text', text: 'Hi!' }])
+  })
+
+  test('a turn that fails in its within keeps no row and sends nothing until it commits', async ({
+    assert,
+  }) => {
+    const channel = await channelIn(app)
+
+    await channel.write('hello')
+
+    const ticketId = await channel.openTicket()
+    let calls = 0
+
+    script = async () => ({
+      ...reply('Hi!'),
+      within: async (trx, ticket) => {
+        calls++
+        await note(trx, ticket.id, `attempt ${calls}`)
+
+        if (calls === 1) throw new Error('the CRM is unavailable')
+
+        return 'ok'
+      },
+    })
+
+    await handToBot(ticketId)
+
+    assert.deepEqual(await notes(ticketId), [])
+    assert.deepEqual(await outbound(ticketId), [])
+    assert.deepEqual(sent(), [])
+
+    await eventually(() => fake.sends.length === 1)
+
+    assert.deepEqual(await notes(ticketId), ['attempt 2'])
+    assert.lengthOf(await outbound(ticketId), 1)
+  })
+
+  test('a stale within runs the turn again on a fresh read, for one commit', async ({ assert }) => {
+    const channel = await channelIn(app)
+
+    await channel.write('hello')
+
+    const ticketId = await channel.openTicket()
+    const db = await app.container.make('lucid.db')
+    let raced = false
+
+    script = async ({ ticket }) => {
+      const read = (await notes(ticket.id)).length
+
+      if (!raced) {
+        raced = true
+        await db.table('bot_notes').insert({ ticket_id: ticket.id, note: 'written meanwhile' })
+      }
+
+      return {
+        ...reply(`Saw ${read}`),
+        within: async (trx, current) => {
+          if ((await notes(current.id, trx)).length !== read) return 'stale'
+
+          await note(trx, current.id, `answered after ${read}`)
+
+          return 'ok'
+        },
+      }
+    }
+
+    await handToBot(ticketId)
+
+    assert.lengthOf(turns, 2)
+    assert.deepEqual(sent(), [{ kind: 'text', text: 'Saw 1' }])
+    assert.deepEqual(await notes(ticketId), ['written meanwhile', 'answered after 1'])
+  })
+
+  test('a within that stays stale drops the turn after its reruns, with nothing sent', async ({
+    assert,
+  }) => {
+    const channel = await channelIn(app)
+
+    await channel.write('hello')
+
+    const ticketId = await channel.openTicket()
+
+    script = async () => ({
+      ...reply('Hi!'),
+      within: async (trx, ticket) => {
+        await note(trx, ticket.id, 'never kept')
+
+        return 'stale'
+      },
+    })
+
+    const { bot } = await handToBot(ticketId)
+
+    assert.lengthOf(turns, 4)
+
+    // A dropped turn queues no retry, whose first delay is a second.
+    await sleep(1200)
+
+    assert.lengthOf(turns, 4)
+    assert.deepEqual(await notes(ticketId), [])
+    assert.deepEqual(await outbound(ticketId), [])
+    assert.deepEqual(sent(), [])
+    assert.notProperty(JSON.parse((await ticketRow(ticketId)).bot_state), String(bot.id))
   })
 })

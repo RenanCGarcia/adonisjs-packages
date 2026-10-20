@@ -43,6 +43,7 @@ export type {
   BotLoader,
   BotReply,
   BotTurn,
+  BotWithin,
   InboundMessage,
 } from './src/bots.ts'
 
@@ -57,6 +58,8 @@ export {
 export { InboxError, type InboxErrorCode } from './src/errors.ts'
 
 export type { RecoverReport, TickReport } from './src/inbox.ts'
+
+export type { Later } from './src/internal/unit_of_work.ts'
 
 export { MODEL_ROLES, type ModelRole } from './src/models.ts'
 
