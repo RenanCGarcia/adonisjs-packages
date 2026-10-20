@@ -8,7 +8,8 @@
     },
     "test": {
       "dependsOn": ["^build"],
-      "cache": false
+      "cache": false,
+      "passThroughEnv": ["DB_*"]
     },
     "typecheck": {
       "dependsOn": ["^build"],
