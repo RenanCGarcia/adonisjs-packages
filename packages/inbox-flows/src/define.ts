@@ -1,3 +1,4 @@
+import type { TransactionClientContract } from '@adonisjs/lucid/types/database'
 import vine, { type VineObject } from '@vinejs/vine'
 import type { Infer, SchemaTypes } from '@vinejs/vine/types'
 import type {
@@ -6,6 +7,8 @@ import type {
   InboundMessage,
   JsonValue,
   QueueId,
+  TicketId,
+  TicketSnapshot,
 } from '@enzopita/adonisjs-inbox'
 import type { DateTime, DurationLike } from 'luxon'
 
@@ -29,26 +32,71 @@ import {
   type VariableType,
   type Variables,
 } from './graph/values.ts'
+import type { FlowId, FlowRunId, FlowVersionId } from './types.ts'
 
 /**
  * A node's config is a Vine object whose output is plain JSON, so a graph stores it as is.
  */
 export type ConfigSchema = VineObject<any, any, JsonObject, any>
 
-export interface EffectDefinition<Payload extends ConfigSchema = ConfigSchema> {
-  payload: Payload
-  /**
-   * `in_transaction`: applied in the transaction that commits the turn, so it lands exactly
-   * once with the replies. Database writes only.
-   * `after_commit`: stored with the turn, performed after the commit with retries and an
-   * idempotency key. For IO outside your database.
-   */
-  delivery: EffectDelivery
+/**
+ * The run and node an effect came from.
+ */
+export interface EffectContext {
+  ticketId: TicketId
+  run: { id: FlowRunId; flowId: FlowId; versionId: FlowVersionId }
+  node: string
 }
 
 /**
- * Declared inline on the node that emits it, so the effects a registry can emit are derived
- * from its nodes and never kept in a second list.
+ * Runs in the transaction that commits the turn, after its replies and its run are stored, so
+ * the effect lands exactly once with them, or rolls back with them. Write only through `trx`
+ * and do no network IO: the transaction holds the ticket's row.
+ */
+export interface InTransactionEffect<Payload> {
+  apply(
+    trx: TransactionClientContract,
+    payload: Payload,
+    context: EffectContext & { ticket: TicketSnapshot },
+  ): Promise<void>
+}
+
+/**
+ * Runs from the outbox after the commit, again on failure up to a bounded number of attempts.
+ * A worker that dies mid-call means another call, so hand `idempotencyKey` to the remote side.
+ */
+export interface AfterCommitEffect<Payload> {
+  deliver(
+    payload: Payload,
+    context: EffectContext & { idempotencyKey: string; attempt: number },
+  ): Promise<void>
+}
+
+/**
+ * A lazily imported class, made through the container so `@inject()` works.
+ */
+export type EffectHandler<Handler> = () => Promise<{
+  default: new (...args: never[]) => Handler
+}>
+
+/**
+ * `in_transaction` is for writes to your own database. `after_commit` is for IO outside it.
+ */
+export type EffectDefinition<Payload extends ConfigSchema = ConfigSchema> =
+  | {
+      payload: Payload
+      delivery: 'in_transaction'
+      handler: EffectHandler<InTransactionEffect<Infer<Payload>>>
+    }
+  | {
+      payload: Payload
+      delivery: 'after_commit'
+      handler: EffectHandler<AfterCommitEffect<Infer<Payload>>>
+    }
+
+/**
+ * Declared inline on the node that emits it, with its handler, so the effects a registry can
+ * emit and how each is performed are derived from its nodes and never kept in a second list.
  */
 export function defineEffect<Payload extends ConfigSchema>(effect: EffectDefinition<Payload>) {
   return effect

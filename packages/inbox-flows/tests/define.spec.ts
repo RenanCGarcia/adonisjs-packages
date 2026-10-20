@@ -2,7 +2,7 @@ import { test } from '@japa/runner'
 import vine from '@vinejs/vine'
 
 import { builtins, defineEffect, defineNode, defineNodes, type EffectsOf } from '../index.ts'
-import { Conversation, compiled, graph, said } from './helpers.ts'
+import { Conversation, Discard, compiled, graph, said } from './helpers.ts'
 
 /**
  * At version 2: version 1 called `prompt` `question`.
@@ -28,6 +28,7 @@ const survey = defineNode({
   effect: defineEffect({
     payload: vine.object({ score: vine.number() }),
     delivery: 'after_commit',
+    handler: async () => ({ default: Discard }),
   }),
   upgrade: (data, from) => {
     const { question, ...rest } = data
@@ -189,6 +190,7 @@ test.group('defineNode / types', () => {
   const effect = defineEffect({
     payload: vine.object({ tag: vine.string() }),
     delivery: 'after_commit',
+    handler: async () => ({ default: Discard }),
   })
 
   test('go names a port of the node', ({ assert }) => {
@@ -304,6 +306,38 @@ test.group('defineNode / types', () => {
     })
 
     assert.equal(node.type, 'effect_typo')
+  })
+
+  test('the handler matches the delivery and the payload of its effect', ({ assert }) => {
+    class Deliver {
+      async deliver(_payload: { tag: string }) {}
+    }
+
+    class ApplyCount {
+      async apply(_trx: never, _payload: { count: number }) {}
+    }
+
+    const delivered = defineEffect({
+      payload: vine.object({ tag: vine.string() }),
+      delivery: 'after_commit',
+      handler: async () => ({ default: Deliver }),
+    })
+
+    // @ts-expect-error an in-transaction effect needs `apply`, not `deliver`.
+    defineEffect({
+      payload: vine.object({ tag: vine.string() }),
+      delivery: 'in_transaction',
+      handler: async () => ({ default: Deliver }),
+    })
+
+    defineEffect({
+      payload: vine.object({ tag: vine.string() }),
+      delivery: 'in_transaction',
+      // @ts-expect-error the payload has a `tag`, not a `count`.
+      handler: async () => ({ default: ApplyCount }),
+    })
+
+    assert.equal(delivered.delivery, 'after_commit')
   })
 
   test('a node that never waits cannot ask to wait', ({ assert }) => {

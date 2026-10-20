@@ -10,7 +10,7 @@ import {
   type JsonObject,
   type Outcome,
 } from '../index.ts'
-import { Conversation, compiled, graph, inbound, said, t0 } from './helpers.ts'
+import { Conversation, Discard, compiled, graph, inbound, said, t0 } from './helpers.ts'
 
 const askEmail = defineNode({
   type: 'ask_email',
@@ -45,6 +45,7 @@ const addTag = defineNode({
   effect: defineEffect({
     payload: vine.object({ tag: vine.string() }),
     delivery: 'in_transaction',
+    handler: async () => ({ default: Discard }),
   }),
   ui: { label: 'Add tag', category: 'Actions' },
   execute: ({ config }) => ({ go: 'default', effect: { tag: config.tag } }),

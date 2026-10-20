@@ -52,6 +52,15 @@ export function inbound(id: number, text: string): InboundMessage {
   return { id: id as MessageId, content: { kind: 'text', text }, sentAt: t0 }
 }
 
+/**
+ * An effect handler for nodes whose effects these specs only look at as data.
+ */
+export class Discard {
+  async apply() {}
+
+  async deliver() {}
+}
+
 export const registry = defineNodes(builtins)
 
 export async function compiled(

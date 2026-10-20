@@ -2,16 +2,20 @@ export {
   defineEffect,
   defineNode,
   defineNodes,
+  type AfterCommitEffect,
   type BindResult,
   type BoundNode,
   type BoundStep,
   type CompiledGraph,
   type CompileResult,
   type ConfigSchema,
+  type EffectContext,
   type EffectDefinition,
+  type EffectHandler,
   type EffectsOf,
   type Ending,
   type FieldsOf,
+  type InTransactionEffect,
   type Instant,
   type NodeRegistry,
   type NodeRule,
@@ -27,6 +31,8 @@ export {
   type Step,
   type Wait,
 } from './src/define.ts'
+
+export type { FlowBindingId, FlowEffectId, FlowId, FlowRunId, FlowVersionId } from './src/types.ts'
 
 export { graphHash } from './src/graph_hash.ts'
 

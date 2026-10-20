@@ -218,10 +218,10 @@ const delay = defineNode({
   resume: () => ({ go: 'default' }),
 })
 
-// SAFETY: ids in a graph are the host's own; its publish checks that the row exists.
+// SAFETY: publish checks that a `queue` widget's id names a queue row.
 const queueId = (id: number) => id as QueueId
 
-// SAFETY: as above, for attendants.
+// SAFETY: publish checks that an `attendant` widget's id names an attendant row.
 const attendantId = (id: number) => id as AttendantId
 
 const handoff = defineNode({
@@ -269,7 +269,7 @@ const close = defineNode({
   }),
   defaults: { reason: 'bot_completed' },
   fields: {
-    reason: { label: 'Reason', widget: 'select' },
+    reason: { label: 'Reason', widget: 'close_reason' },
     text: { label: 'Say first', widget: 'textarea', binds: 'template' },
   },
   ports: [],
@@ -277,8 +277,8 @@ const close = defineNode({
   execute: ({ config }) => ({
     say: config.text ? [config.text] : [],
     end: 'close',
-    // SAFETY: close reasons are a type-level augmentation of the inbox, so a stored graph can
-    // only be checked against the host's list at publish.
+    // SAFETY: close reasons are a type-level augmentation of the inbox. Publish checks a field
+    // with the `close_reason` widget against the host's list, `config.closeReasons`.
     reason: config.reason as CloseReason,
   }),
 })

@@ -69,6 +69,7 @@ export type FieldWidget =
   | 'duration'
   | 'queue'
   | 'attendant'
+  | 'close_reason'
 
 /**
  * Merged into the catalog's JSON Schema as `x-ui`. It never goes through Vine's `.meta()`, whose
@@ -177,6 +178,7 @@ export type ProblemCode =
   | 'variable_type_mismatch'
   | 'variable_maybe_unset'
   | 'node_rule'
+  | 'unknown_reference'
 
 export interface Problem {
   code: ProblemCode

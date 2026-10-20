@@ -36,6 +36,7 @@
   },
   "devDependencies": {
     "@adonisjs/core": "catalog:",
+    "@adonisjs/lucid": "catalog:",
     "@adonisjs/tsconfig": "catalog:",
     "@enzopita/adonisjs-inbox": "workspace:*",
     "@japa/assert": "catalog:",
@@ -49,6 +50,7 @@
   },
   "peerDependencies": {
     "@adonisjs/core": "^7.6.0",
+    "@adonisjs/lucid": "^22.4.0",
     "@enzopita/adonisjs-inbox": "workspace:^",
     "@vinejs/vine": "^4.4.0",
     "luxon": "^3.7.0"
