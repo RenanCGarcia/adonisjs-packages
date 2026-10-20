@@ -49,7 +49,7 @@ export default class extends BaseSchema {
       table.integer('default_queue_id').unsigned().notNullable().references('inbox_queues.id')
       table.string('webhook_token').notNullable().unique()
       table.text('credentials').notNullable()
-      // A provider reached through webhooks alone never leaves `connected`.
+      // A provider reached through webhooks alone never leaves 'connected'.
       table.string('status').notNullable().defaultTo('connected')
       table.timestamp('archived_at').nullable()
 
@@ -160,7 +160,7 @@ export default class extends BaseSchema {
       table.integer('conversation_id').unsigned().notNullable().references('inbox_conversations.id').onDelete('CASCADE')
       table.integer('ticket_id').unsigned().nullable().references('inbox_tickets.id')
       table.string('direction').notNullable()
-      // What `body` holds depends on the kind, which is only `text` so far.
+      // What 'body' holds depends on the kind, which is only 'text' so far.
       table.string('kind').notNullable()
       table.text('body').notNullable()
       table.string('status').nullable()
