@@ -4,19 +4,19 @@ import { promisify } from 'node:util'
 import { test } from '@japa/runner'
 import type { OpenApiDocument } from '../src/types.ts'
 
-const playground = new URL('../../../playground/', import.meta.url)
+const fixture = new URL('fixtures/app/', import.meta.url)
 const output = 'tmp/openapi.spec.json'
 const run = promisify(execFile)
 
-test.group('openapi:generate on the playground app', group => {
+test.group('openapi:generate on the fixture app', group => {
   let document: OpenApiDocument
 
   group.setup(async () => {
-    await run('node', ['ace', 'codegen'], { cwd: playground })
-    await run('node', ['ace', 'openapi:generate', `--output=${output}`], { cwd: playground })
-    document = JSON.parse(await readFile(new URL(output, playground), 'utf8'))
+    await run('node', ['ace', 'codegen'], { cwd: fixture })
+    await run('node', ['ace', 'openapi:generate', `--output=${output}`], { cwd: fixture })
+    document = JSON.parse(await readFile(new URL(output, fixture), 'utf8'))
 
-    return () => rm(new URL(output, playground))
+    return () => rm(new URL(output, fixture))
   })
 
   test('documents every named route and skips closures', ({ assert }) => {

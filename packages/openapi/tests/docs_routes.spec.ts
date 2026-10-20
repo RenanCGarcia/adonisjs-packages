@@ -8,7 +8,7 @@ import { promisify } from 'node:util'
 import { test } from '@japa/runner'
 import type { OpenApiDocument } from '../src/types.ts'
 
-const playground = new URL('../../../playground/', import.meta.url)
+const fixture = new URL('fixtures/app/', import.meta.url)
 const run = promisify(execFile)
 
 async function freePort() {
@@ -27,11 +27,11 @@ async function freePort() {
 /**
  * Boots `bin/server.ts` the way `node ace serve` does, without the file watcher.
  */
-async function startPlayground(nodeEnv: 'development' | 'production') {
+async function startFixture(nodeEnv: 'development' | 'production') {
   const port = await freePort()
 
   const child = spawn(process.execPath, ['--import=@poppinss/ts-exec', 'bin/server.ts'], {
-    cwd: playground,
+    cwd: fixture,
     env: { ...process.env, NODE_ENV: nodeEnv, PORT: String(port), HOST: '127.0.0.1' },
     stdio: 'ignore',
   })
@@ -39,7 +39,7 @@ async function startPlayground(nodeEnv: 'development' | 'production') {
   const baseUrl = `http://127.0.0.1:${port}`
 
   for (let attempt = 0; attempt < 120; attempt++) {
-    if (child.exitCode !== null) throw new Error(`the playground exited with ${child.exitCode}`)
+    if (child.exitCode !== null) throw new Error(`the fixture exited with ${child.exitCode}`)
 
     const ready = await fetch(baseUrl).then(
       response => response.ok,
@@ -52,7 +52,7 @@ async function startPlayground(nodeEnv: 'development' | 'production') {
   }
 
   child.kill()
-  throw new Error('the playground did not start in 30s')
+  throw new Error('the fixture did not start in 30s')
 }
 
 async function signUp(baseUrl: string) {
@@ -76,9 +76,9 @@ test.group('docs page behind basic auth, generated live in development', group =
 
   group.setup(async () => {
     await run('node', ['ace', 'migration:run', '--force', '--no-schema-generate'], {
-      cwd: playground,
+      cwd: fixture,
     })
-    const server = await startPlayground('development')
+    const server = await startFixture('development')
     baseUrl = server.baseUrl
     authorization = await signUp(baseUrl)
 
@@ -118,23 +118,23 @@ test.group('docs page behind basic auth, generated live in development', group =
 })
 
 test.group('docs page in production', group => {
-  const file = new URL('openapi.json', playground)
+  const file = new URL('openapi.json', fixture)
   let baseUrl: string
   let authorization: string
   let written: OpenApiDocument
 
   group.setup(async () => {
     await run('node', ['ace', 'migration:run', '--force', '--no-schema-generate'], {
-      cwd: playground,
+      cwd: fixture,
     })
-    await run('node', ['ace', 'openapi:generate'], { cwd: playground })
+    await run('node', ['ace', 'openapi:generate'], { cwd: fixture })
     const generated = await readFile(file, 'utf8')
 
     // A version no live generation produces, so the response proves it came from the file.
     written = { ...JSON.parse(generated), info: { title: 'API', version: randomUUID() } }
     await writeFile(file, JSON.stringify(written))
 
-    const server = await startPlayground('production')
+    const server = await startFixture('production')
     baseUrl = server.baseUrl
     authorization = await signUp(baseUrl)
 
