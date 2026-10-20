@@ -4,6 +4,7 @@ import { promisify } from 'node:util'
 
 import { IgnitorFactory } from '@adonisjs/core/factories'
 import type { ApplicationService, ConfigProvider } from '@adonisjs/core/types'
+import type { ProviderNode } from '@adonisjs/core/types/app'
 import { defineConfig as defineDatabaseConfig } from '@adonisjs/lucid'
 
 import type { InboxModels, ResolvedInboxConfig } from '../define_config.ts'
@@ -44,11 +45,24 @@ export async function migrateApp(appRoot: URL) {
 }
 
 /**
+ * What a package building on the inbox boots with it: its providers, registered after the
+ * inbox's, and its config files by name.
+ */
+export interface BootExtras {
+  providers?: Array<ProviderNode['file']>
+  config?: { [file: string]: ConfigProvider<object> }
+}
+
+/**
  * Boots the app in this process with Lucid on its SQLite file in `tmp/db.sqlite3`, the inbox
  * provider and `inbox`, so a spec can land a write between another write's read and its
  * commit.
  */
-export async function bootApp(appRoot: URL, inbox: ConfigProvider<ResolvedInboxConfig>) {
+export async function bootApp(
+  appRoot: URL,
+  inbox: ConfigProvider<ResolvedInboxConfig>,
+  extras: BootExtras = {},
+) {
   const app: ApplicationService = new IgnitorFactory()
     .withCoreProviders()
     .withCoreConfig()
@@ -57,6 +71,7 @@ export async function bootApp(appRoot: URL, inbox: ConfigProvider<ResolvedInboxC
         providers: [
           () => import('@adonisjs/lucid/database_provider'),
           () => import('../../providers/inbox_provider.ts'),
+          ...(extras.providers ?? []),
         ],
       },
       config: {
@@ -71,6 +86,7 @@ export async function bootApp(appRoot: URL, inbox: ConfigProvider<ResolvedInboxC
           },
         }),
         inbox,
+        ...extras.config,
       },
     })
     .create(appRoot, { importer: filePath => import(filePath) })

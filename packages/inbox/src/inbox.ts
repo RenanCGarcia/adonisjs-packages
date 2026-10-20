@@ -23,6 +23,7 @@ import {
 import { toContentColumns } from './message/content.ts'
 import { advanceableFrom } from './message/status.ts'
 import type { InboxModelOf } from './mixins/main.ts'
+import type { ModelRole } from './models.ts'
 import {
   DISPATCH_LEASE_MS,
   GIVE_UP_AFTER_MS,
@@ -196,6 +197,14 @@ export class Inbox {
    */
   close() {
     this.#tasks.close()
+  }
+
+  /**
+   * The model `config.models` maps to `role`, for a package that reads the inbox's rows, such as
+   * a sweep over the tickets it works on.
+   */
+  model<R extends ModelRole>(role: R): Promise<InboxModelOf<R>> {
+    return this.#config.model(role)
   }
 
   readonly tickets = {
