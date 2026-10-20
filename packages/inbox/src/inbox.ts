@@ -1462,9 +1462,7 @@ export class Inbox {
         const now = DateTime.now()
 
         const reply = await bot.turn({
-          ...(task.trigger.kind === 'wake'
-            ? { trigger: 'wake', token: task.trigger.token }
-            : { trigger: task.trigger.kind }),
+          ...turnTrigger(task.trigger),
           ticket,
           channel: { id: channel.id, provider },
           contactId: conversation.contactId,
@@ -1666,6 +1664,22 @@ function changeOf(
       return []
     default: {
       const unhandled: never = effect
+
+      return unhandled
+    }
+  }
+}
+
+function turnTrigger(trigger: BotTrigger) {
+  switch (trigger.kind) {
+    case 'assigned':
+      return { trigger: 'assigned', version: trigger.version } as const
+    case 'message':
+      return { trigger: 'message' } as const
+    case 'wake':
+      return { trigger: 'wake', token: trigger.token } as const
+    default: {
+      const unhandled: never = trigger
 
       return unhandled
     }

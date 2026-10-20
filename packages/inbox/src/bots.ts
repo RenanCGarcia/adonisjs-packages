@@ -38,9 +38,17 @@ export type BotTurn<State extends JsonValue> = {
 } & (
   | {
       /**
-       * `assigned` when the bot just got the ticket, `message` when the contact wrote.
+       * The bot got the ticket from a human or an automation. `version` is the one that handover
+       * gave the ticket, and a turn run again on a fresh read sees the ticket past it.
        */
-      trigger: 'assigned' | 'message'
+      trigger: 'assigned'
+      version: number
+    }
+  | {
+      /**
+       * The contact wrote.
+       */
+      trigger: 'message'
     }
   | {
       /**

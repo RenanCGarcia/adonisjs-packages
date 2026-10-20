@@ -177,7 +177,7 @@ export default class TriageBot implements Bot<TriageState> {
 You never call a bot. A ticket reaches it through `{ gesture: 'assign', to: bot.id }`, where `bot = await inbox.attendants.bot('triage')`, or through an automation. From then on the package runs a turn:
 
 - after each inbound message on a ticket the bot holds, once `debounce` passed without a newer message, with `trigger: 'message'`;
-- when the bot gets the ticket from a human or an automation, with `trigger: 'assigned'`. A bot handing the ticket to another bot leaves that one to the next message, so two bots never pass a ticket back and forth;
+- when the bot gets the ticket from a human or an automation, with `trigger: 'assigned'` and the `version` that handover gave the ticket. A turn run again on a fresh read sees the ticket past it, so a bot keeping its own records can tell the ones it wrote since the handover from older ones. A bot handing the ticket to another bot leaves that one to the next message, so two bots never pass a ticket back and forth;
 - when you call `inbox.tickets.wake(ticketId, 'triage', token, { in: { minutes: 10 } })`, with `trigger: 'wake'` and that `token`, after the delay and without the debounce. The turn does nothing unless the bot still holds the ticket then. Whether the wake is still due is the bot's call, made from the token, such as a reminder it has since cancelled. Through `tasks.queue()` the delay survives a restart, and through `tasks.inline()` it doesn't.
 
 Every turn also carries the ticket's `channel` (`{ id, provider }`) and `contactId`.
