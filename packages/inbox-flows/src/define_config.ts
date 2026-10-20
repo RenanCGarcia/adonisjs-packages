@@ -1,6 +1,7 @@
 import { configProvider } from '@adonisjs/core'
 import type { ConfigProvider } from '@adonisjs/core/types'
 import type { BotKey, CloseReason } from '@enzopita/adonisjs-inbox'
+import { assertSchema } from '@enzopita/adonisjs-inbox/migrations'
 import { Duration, type DurationLike } from 'luxon'
 
 import type { NodeRegistry, NodeType } from './define.ts'
@@ -9,6 +10,7 @@ import type { FlowGraph, Problem } from './graph/types.ts'
 import { DEFAULT_MAX_STEPS } from './interpreter.ts'
 import type { FlowsModelOf } from './mixins/main.ts'
 import { FLOWS_MODEL_ROLES, type FlowsModelRole } from './models.ts'
+import { FLOWS_MIGRATIONS } from './schema.ts'
 import type { FlowId } from './types.ts'
 
 type Lazy<T> = () => Promise<{ default: T }>
@@ -122,6 +124,8 @@ function resolve<Nodes extends readonly NodeType[]>(
           `inbox-flows: config.models.${role} is a model without the ${role} mixin from @enzopita/adonisjs-inbox-flows/mixins`,
         )
       }
+
+      assertSchema(FLOWS_MIGRATIONS, role, model)
 
       return model
     },

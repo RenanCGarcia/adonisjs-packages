@@ -15,7 +15,7 @@ node ace migration:run
 
 - registers `@enzopita/adonisjs-inbox-flows/inbox_flows_provider` and the `@enzopita/adonisjs-inbox-flows/commands` ace commands in `adonisrc.ts`;
 - writes `config/inbox_flows.ts`;
-- writes one migration with the `inbox_flows`, `inbox_flow_versions`, `inbox_flow_bindings`, `inbox_flow_runs` and `inbox_flow_effects` tables;
+- writes the migrations, today one, `database/migrations/<timestamp>_inbox_flows_0001_create_inbox_flows_tables.ts`, with the `inbox_flows`, `inbox_flow_versions`, `inbox_flow_bindings`, `inbox_flow_runs` and `inbox_flow_effects` tables;
 - writes five models under `app/models/inbox/`, each `compose(InboxFlowXSchema, withInboxFlowX())`.
 
 Then register the flows bot in `config/inbox.ts`, and hand it the tickets it should look at. One bot key runs every flow:
@@ -31,6 +31,15 @@ automations: [
 ```
 
 Schedule `node ace flows:tick` every minute, next to `inbox:tick` (see [The tick](#the-tick)).
+
+## Upgrading
+
+```sh
+node ace flows:migrations
+node ace migration:run
+```
+
+This works as the inbox's [`inbox:migrations`](../inbox#upgrading) does. A release that changes the schema ships a new migration, and `flows:migrations` writes the ones `database/migrations` lacks, known by the id in `<timestamp>_inbox_flows_<id>_<name>.ts`, without touching the files you have. A second run writes nothing, and `--check` exits with 1 when one is missing. Until you migrate, the first use of a flows model that lacks a column throws an `InboxError` with the code `E_INBOX_SCHEMA_OUTDATED`.
 
 ## Config
 

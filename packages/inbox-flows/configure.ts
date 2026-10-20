@@ -1,6 +1,8 @@
 import type Configure from '@adonisjs/core/commands/configure'
+import { publishMigrations } from '@enzopita/adonisjs-inbox/migrations'
 
 import { FLOWS_MODEL_ROLES } from './src/models.ts'
+import { FLOWS_MIGRATIONS } from './src/schema.ts'
 import { stubsRoot } from './stubs/main.ts'
 
 export function modelStubOf(role: (typeof FLOWS_MODEL_ROLES)[number]) {
@@ -16,9 +18,10 @@ export async function configure(command: Configure) {
   })
 
   await codemods.makeUsingStub(stubsRoot, 'config/inbox_flows.stub', {})
-  await codemods.makeUsingStub(stubsRoot, 'migrations/create_inbox_flows_tables.stub', {
-    migration: { fileName: `${Date.now()}_create_inbox_flows_tables.ts` },
-  })
+
+  for (const { path } of await publishMigrations(command.app, FLOWS_MIGRATIONS)) {
+    command.logger.action(`create ${command.app.relativePath(path)}`).succeeded()
+  }
 
   for (const role of FLOWS_MODEL_ROLES) {
     await codemods.makeUsingStub(stubsRoot, modelStubOf(role), {})
