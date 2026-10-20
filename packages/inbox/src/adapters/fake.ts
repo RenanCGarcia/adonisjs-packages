@@ -2,10 +2,12 @@ import { randomUUID } from 'node:crypto'
 
 import { DateTime } from 'luxon'
 
+import type { ChannelId } from '../types.ts'
 import type {
   AdapterChannel,
   Capability,
   ChannelAdapter,
+  ConnectionState,
   NormalizedEvent,
   OutgoingMessage,
   SendOptions,
@@ -29,12 +31,14 @@ const accept: FakeResponder = async () => ({ status: 'accepted', externalId: ran
 /**
  * A real adapter with no provider behind it. A webhook carries the `x-fake-secret` header equal to
  * the channel's `credentials.secret`, and its body is `fakeWebhookBody(...)`. Every send is
- * recorded in `sends` and answered by `respond`, which accepts by default.
+ * recorded in `sends` and answered by `respond`, which accepts by default. A channel is
+ * connected until `disconnect`.
  */
 export class FakeChannelAdapter implements ChannelAdapter {
   readonly capabilities: readonly Capability[]
   readonly sends: FakeSend[] = []
   respond: FakeResponder = accept
+  readonly #disconnected = new Set<ChannelId>()
 
   constructor(capabilities: readonly Capability[] = ['outbound_echo', 'send_text']) {
     this.capabilities = capabilities
@@ -85,9 +89,26 @@ export class FakeChannelAdapter implements ChannelAdapter {
     return this.respond(message, options)
   }
 
+  async connect(channel: AdapterChannel) {
+    this.#disconnected.delete(channel.id)
+
+    return this.checkHealth(channel)
+  }
+
+  async disconnect(channel: AdapterChannel) {
+    this.#disconnected.add(channel.id)
+  }
+
+  async checkHealth(channel: AdapterChannel): Promise<ConnectionState> {
+    return this.#disconnected.has(channel.id)
+      ? { status: 'disconnected', reason: 'logged_out' }
+      : { status: 'connected' }
+  }
+
   reset() {
     this.sends.length = 0
     this.respond = accept
+    this.#disconnected.clear()
   }
 }
 

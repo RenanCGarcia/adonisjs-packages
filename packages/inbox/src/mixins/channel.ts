@@ -1,6 +1,7 @@
 import { column } from '@adonisjs/lucid/orm'
 import type { DateTime } from 'luxon'
 
+import type { ChannelStatus } from '../adapters/port.ts'
 import type { ChannelId, JsonValue, QueueId } from '../types.ts'
 import { jsonText, type InboxModel, type Model } from './model.ts'
 
@@ -10,6 +11,7 @@ export interface InboxChannelRow {
   name: string
   defaultQueueId: QueueId
   webhookToken: string
+  status: ChannelStatus
   credentials: JsonValue
   archivedAt: DateTime | null
 }
@@ -26,6 +28,7 @@ export function withInboxChannel(): <M extends Model>(superclass: M) => InboxCha
       declare name: string
       declare defaultQueueId: QueueId
       declare webhookToken: string
+      declare status: ChannelStatus
       declare archivedAt: DateTime | null
 
       @column(jsonText<JsonValue>())

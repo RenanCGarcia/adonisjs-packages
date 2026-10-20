@@ -2,13 +2,20 @@ import assert from 'node:assert/strict'
 
 import { test } from '@japa/runner'
 
-import type { AdapterChannel, ChannelAdapter, OutgoingMessage } from '../adapters/port.ts'
+import type {
+  AdapterChannel,
+  ChannelAdapter,
+  ChannelStatus,
+  OutgoingMessage,
+} from '../adapters/port.ts'
 import { AdapterRegistry } from '../adapters/registry.ts'
 import type { ChannelId } from '../types.ts'
 
 const GARBAGE = ['', 'garbage', 'null', '42', '{}', '[]', '[null]', '[{}]', '{"event":"unknown"}']
 
 const unsigned = { headers: {}, rawBody: '[]' }
+
+const STATUSES: Record<ChannelStatus, true> = { connected: true, pairing: true, disconnected: true }
 
 /**
  * What the inbox relies on from every adapter. Run it in the adapter's own test suite, with a
@@ -50,6 +57,26 @@ export function channelAdapterContract(
       }
 
       await assert.rejects(() => make().send(channel, message, { signal }))
+    })
+
+    test('connect answers with a connection state', async () => {
+      const adapter = make()
+
+      if (adapter.connect === undefined) return
+
+      const result = await adapter.connect(channel)
+
+      assert.ok(Object.hasOwn(STATUSES, result.status))
+    })
+
+    test('a disconnected channel no longer reports itself connected', async () => {
+      const adapter = make()
+
+      if (adapter.disconnect === undefined || adapter.checkHealth === undefined) return
+
+      await adapter.disconnect(channel)
+
+      assert.notEqual((await adapter.checkHealth(channel)).status, 'connected')
     })
   })
 }

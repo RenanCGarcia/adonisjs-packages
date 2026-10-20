@@ -94,6 +94,7 @@ export class InboxChannelSchema extends BaseModel {
     'id',
     'name',
     'provider',
+    'status',
     'updatedAt',
     'webhookToken',
   ] as const
@@ -112,6 +113,8 @@ export class InboxChannelSchema extends BaseModel {
   declare name: string
   @column()
   declare provider: string
+  @column()
+  declare status: string
   @column.dateTime({ autoCreate: true, autoUpdate: true })
   declare updatedAt: DateTime | null
   @column()

@@ -100,6 +100,33 @@ export interface SendOptions {
   signal: AbortSignal
 }
 
+export type DisconnectReason = 'logged_out' | 'pairing_expired' | 'auth_failed' | 'unknown'
+
+/**
+ * How a session-based provider pairs a number, by scanning a QR code or typing a code.
+ */
+export type ConnectMethod = { method: 'qr' } | { method: 'code'; phoneNumber: string }
+
+/**
+ * The QR code can be null while the provider's session is still starting.
+ */
+export type Pairing = { method: 'qr'; qr: string | null } | { method: 'code'; code: string }
+
+export type ConnectionState =
+  | { status: 'connected' }
+  | { status: 'pairing'; pairing: Pairing }
+  | { status: 'disconnected'; reason: DisconnectReason }
+
+/**
+ * Stored in the channel's `status` column.
+ */
+export type ChannelStatus = ConnectionState['status']
+
+/**
+ * Credentials the provider issued while connecting, for the inbox to store on the channel.
+ */
+export type ConnectResult = ConnectionState & { credentials?: JsonValue }
+
 /**
  * A provider. `parse` never throws. `send` throws only when the message certainly did not leave,
  * which the outbox retries, and stops when `signal` aborts.
@@ -112,6 +139,13 @@ export interface ChannelAdapter {
    */
   parse(rawBody: string): NormalizedEvent[]
   send(channel: AdapterChannel, message: OutgoingMessage, options: SendOptions): Promise<SendResult>
+  /**
+   * The connection lifecycle of a provider with a session to pair. The inbox doesn't call these
+   * yet. A provider reached through webhooks alone leaves them out.
+   */
+  connect?(channel: AdapterChannel, method?: ConnectMethod): Promise<ConnectResult>
+  disconnect?(channel: AdapterChannel): Promise<void>
+  checkHealth?(channel: AdapterChannel): Promise<ConnectionState>
 }
 
 /**

@@ -56,6 +56,8 @@ export default class extends BaseSchema {
       table.integer('default_queue_id').unsigned().notNullable().references('inbox_queues.id')
       table.string('webhook_token').notNullable().unique()
       table.text('credentials').notNullable()
+      // A provider reached through webhooks alone never leaves `connected`.
+      table.string('status').notNullable().defaultTo('connected')
       table.timestamp('archived_at').nullable()
 
       table.timestamp('created_at').notNullable()
