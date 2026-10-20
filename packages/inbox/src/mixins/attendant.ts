@@ -1,7 +1,7 @@
 import type { DateTime } from 'luxon'
 
 import { toAttendant, type AttendantRow } from '../attendant/row.ts'
-import type { Attendant, AttendantId, BotKey, HostUserId } from '../types.ts'
+import type { Attendant, AttendantId, HostUserId } from '../types.ts'
 import type { InboxModel, Model } from './model.ts'
 
 export interface InboxAttendantRow extends AttendantRow {
@@ -25,7 +25,7 @@ export function withInboxAttendant(): <M extends Model>(superclass: M) => InboxA
       declare id: AttendantId
       declare kind: Attendant['kind']
       declare userId: HostUserId | null
-      declare botKey: BotKey | null
+      declare botKey: string | null
       declare deactivatedAt: DateTime | null
 
       get asAttendant() {

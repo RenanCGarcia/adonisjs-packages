@@ -39,7 +39,7 @@
   "scripts": {
     "build": "rm -rf build && tsc -p tsconfig.build.json && cp -r stubs/config stubs/migrations stubs/models build/stubs/",
     "test": "pnpm run build && node --max-old-space-size=1024 --import=@poppinss/ts-exec --enable-source-maps bin/test.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit && tsc -p tests/types"
   },
   "devDependencies": {
     "@adonisjs/core": "catalog:",
