@@ -11,10 +11,24 @@ import type { HttpContext } from '@adonisjs/core/http'
 import type { ModelQueryBuilderContract } from '@adonisjs/lucid/types/model'
 import inbox from '@enzopita/adonisjs-inbox/services/main'
 import inboxFlows from '@enzopita/adonisjs-inbox-flows/services/main'
-import type { Gesture, TicketStatus } from '@enzopita/adonisjs-inbox/types'
+import type { AttendantId, Gesture } from '@enzopita/adonisjs-inbox/types'
 import type { Infer } from '@vinejs/vine/types'
 
-type TicketFilter = Omit<Infer<typeof ticketListValidator>, 'page' | 'perPage'>
+type TicketFilter = Omit<Infer<typeof ticketListValidator>, 'page' | 'perPage' | 'view'>
+
+type View = NonNullable<Infer<typeof ticketListValidator>['view']>
+
+/**
+ * The console's inbox views, as the filter each one stands for. A view replaces the status and
+ * assignee filters.
+ */
+const VIEWS: Record<View, (me: AttendantId) => Pick<TicketFilter, 'status' | 'assignee'>> = {
+  mine: me => ({ status: ['in_progress'], assignee: me }),
+  unassigned: () => ({ status: ['queued'] }),
+  bot: () => ({ status: ['in_progress'], assignee: 'bot' }),
+  open: () => ({ status: ['queued', 'in_progress'] }),
+  closed: () => ({ status: ['closed'] }),
+}
 
 function filtered({ status, queueId, assignee, channelId, search }: TicketFilter) {
   const query = Ticket.query()
@@ -50,34 +64,56 @@ function withRow(query: ModelQueryBuilderContract<typeof Ticket>) {
     .preload('queue')
     .preload('assignee', assignee => assignee.preload('user'))
     .preload('conversation', conversation => conversation.preload('contact').preload('channel'))
-    .preload('messages', messages => messages.groupOrderBy('id', 'desc').groupLimit(1))
+    .preload('messages', messages =>
+      messages
+        .groupOrderBy('id', 'desc')
+        .groupLimit(1)
+        .preload('author', author => author.preload('user')),
+    )
 }
 
 export default class InboxTicketsController {
   /**
-   * One page of the tickets matching the filter, by last activity, and how many match it in
-   * each status whatever the status filter.
+   * One page of the tickets matching the filter, by last activity. Alongside, how many tickets
+   * each view and each queue's open tickets hold within the same channel and search.
    */
-  async index({ request, serialize }: HttpContext) {
-    const { page = 1, perPage = 25, ...filter } = await request.validateUsing(ticketListValidator)
+  async index({ request, auth, serialize }: HttpContext) {
+    const {
+      page = 1,
+      perPage = 25,
+      view,
+      ...filter
+    } = await request.validateUsing(ticketListValidator)
+    const me = (await inbox.attendants.forUser(auth.getUserOrFail().id)).id
 
-    const tickets = await withRow(filtered(filter))
+    const tickets = await withRow(filtered({ ...filter, ...(view && VIEWS[view](me)) }))
       .orderBy('lastActivityAt', 'desc')
       .orderBy('id', 'desc')
       .paginate(page, perPage)
 
-    const rows = await filtered({ ...filter, status: undefined })
-      .select('status')
+    const scope = { channelId: filter.channelId, search: filter.search }
+
+    const views = Object.fromEntries(
+      await Promise.all(
+        Object.entries(VIEWS).map(async ([name, of]) => {
+          const [row] = await filtered({ ...scope, ...of(me) }).count('* as total')
+
+          return [name, Number(row.$extras.total)]
+        }),
+      ),
+    ) as Record<View, number>
+
+    const rows = await filtered({ ...scope, ...VIEWS.open(me) })
+      .select('queueId')
       .count('* as total')
-      .groupBy('status')
+      .groupBy('queueId')
 
-    const counts: Record<TicketStatus, number> = { queued: 0, in_progress: 0, closed: 0 }
-
-    for (const row of rows) counts[row.state.status] = Number(row.$extras.total)
+    const queues = Object.fromEntries(rows.map(row => [row.queueId, Number(row.$extras.total)]))
 
     return {
       ...(await serialize(TicketTransformer.paginate(tickets.all(), tickets.getMeta()))),
-      counts,
+      views,
+      queues,
     }
   }
 

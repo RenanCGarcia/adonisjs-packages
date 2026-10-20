@@ -11,6 +11,8 @@ const run = promisify(execFile)
 
 type Status = 'queued' | 'in_progress' | 'closed'
 
+type View = 'mine' | 'unassigned' | 'bot' | 'open' | 'closed'
+
 const SEEDED_AGENTS = ['ana', 'bruno', 'carla', 'diego', 'elisa', 'felipe'].map(
   name => `${name}@inbox.test`,
 )
@@ -22,14 +24,15 @@ interface Row {
   queue: { id: number; name: string }
   assignee: { id: number; kind: string; name: string } | null
   contact: { name: string | null; address: string }
-  lastMessage: { direction: string; text: string } | null
+  lastMessage: { direction: string; text: string; author: { name: string } | null } | null
 }
 
 interface List {
   status: number
   data: Row[]
   metadata: { total: number; currentPage: number; lastPage: number }
-  counts: Record<Status, number>
+  views: Record<View, number>
+  queues: Record<string, number>
 }
 
 interface Detail {
@@ -133,8 +136,8 @@ test.group('the console API', group => {
       ],
     )
     assert.deepEqual(
-      [ticket.lastMessage?.direction, ticket.lastMessage?.text],
-      ['outbound', 'olá, Joana'],
+      [ticket.lastMessage?.direction, ticket.lastMessage?.text, ticket.lastMessage?.author?.name],
+      ['outbound', 'olá, Joana', me.email],
     )
   })
 
@@ -155,14 +158,12 @@ test.group('the console API', group => {
     const all = await list()
 
     assert.deepEqual(ids(all), [waiting.ticketId, held.ticketId, done.ticketId])
-    assert.deepEqual(all.counts, { queued: 1, in_progress: 1, closed: 1 })
 
     const activity = all.data.map(row => row.lastActivityAt)
     assert.deepEqual(activity, [...activity].sort().reverse(), 'the latest activity comes first')
 
     const open = await list('&status=queued,in_progress')
     assert.deepEqual(ids(open), [waiting.ticketId, held.ticketId])
-    assert.deepEqual(open.counts, { queued: 1, in_progress: 1, closed: 1 })
     assert.deepEqual(ids(await list('&status=queued&status=in_progress')), ids(open))
 
     assert.deepEqual(ids(await list('&assignee=unassigned')), [waiting.ticketId])
@@ -172,12 +173,62 @@ test.group('the console API', group => {
 
     const searched = await list('&search=nUNES')
     assert.deepEqual(ids(searched), [held.ticketId])
-    assert.deepEqual(searched.counts, { queued: 0, in_progress: 1, closed: 0 })
     assert.deepEqual(ids(await list('&search=55219')), [done.ticketId])
 
     const first = await list('&perPage=2')
     const second = await list('&perPage=2&page=2')
     assert.deepEqual([first.data.length, second.data.length, first.metadata.total], [2, 1, 3])
+  })
+
+  test('each view lists and counts its tickets, within the channel and search', async ({
+    assert,
+  }) => {
+    const admin = await agent()
+    const colleague = await agent()
+    const { writeIn, list, queueId, channelId } = await inbox(admin)
+    await admin.post(`/inbox/queues/${queueId}/members`, { userId: colleague.userId })
+
+    const waiting = await writeIn('+5511933330001', 'Fábio Reis', 'um')
+    const mine = await writeIn('+5511933330002', 'Gisele Prado', 'dois')
+    const theirs = await writeIn('+5511933330003', 'Heitor Lima', 'três')
+    const bot = await writeIn('+5511933330004', 'Ingrid Sá', 'quatro')
+    const done = await writeIn('+5511933330005', 'Jonas Ramos', 'cinco')
+
+    await admin.post(`/inbox/tickets/${mine.ticketId}/assume`)
+    await colleague.post(`/inbox/tickets/${theirs.ticketId}/assume`)
+    await admin.post(`/inbox/tickets/${bot.ticketId}/assign`, { bot: 'triage' })
+    await admin.post(`/inbox/tickets/${done.ticketId}/close`, { reason: 'manual' })
+
+    const ids = async (view: View) =>
+      (await list(`&view=${view}`)).data.map(row => row.id).sort((a, b) => a - b)
+
+    const all = await list()
+    const searched = await list('&view=mine&search=heitor')
+
+    const colleagueMine = await colleague.get<List>(
+      `/inbox/tickets?channelId=${channelId}&view=mine`,
+    )
+
+    assert.deepEqual(all.views, { mine: 1, unassigned: 1, bot: 1, open: 4, closed: 1 })
+    assert.deepEqual(all.queues, { [queueId]: 4 })
+    assert.deepEqual(await ids('mine'), [mine.ticketId])
+    assert.deepEqual(await ids('unassigned'), [waiting.ticketId])
+    assert.deepEqual(await ids('bot'), [bot.ticketId])
+    assert.deepEqual(await ids('open'), [
+      waiting.ticketId,
+      mine.ticketId,
+      theirs.ticketId,
+      bot.ticketId,
+    ])
+    assert.deepEqual(await ids('closed'), [done.ticketId])
+    assert.deepEqual(
+      colleagueMine.data.map(row => row.id),
+      [theirs.ticketId],
+      "a colleague's mine view is their own",
+    )
+    assert.deepEqual(searched.data, [])
+    assert.deepEqual(searched.views, { mine: 0, unassigned: 0, bot: 0, open: 1, closed: 0 })
+    assert.deepEqual(searched.queues, { [queueId]: 1 })
   })
 
   test('an unknown status in the filter is a validation error', async ({ assert }) => {

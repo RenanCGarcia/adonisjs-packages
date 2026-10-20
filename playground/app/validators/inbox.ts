@@ -40,6 +40,7 @@ export const messageValidator = vine.create({
 export const ticketListValidator = vine.create({
   // The query string parser makes `status=queued,closed` or a repeated `status` an array, and
   // leaves one status a string.
+  view: vine.enum(['mine', 'unassigned', 'bot', 'open', 'closed'] as const).optional(),
   status: vine
     .array(vine.enum(['queued', 'in_progress', 'closed'] as const))
     .parse(value => (value === undefined ? value : [value].flat()))

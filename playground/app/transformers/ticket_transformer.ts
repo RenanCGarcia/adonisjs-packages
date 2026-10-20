@@ -3,7 +3,8 @@ import { BaseTransformer } from '@adonisjs/core/transformers'
 
 /**
  * Reads `queue`, `assignee.user`, `conversation.contact`, `conversation.channel` and the last
- * of `messages`, and in the detail `conversation.messages.author.user` and `events.actor.user`.
+ * of `messages` with its `author.user`, and in the detail `conversation.messages.author.user`
+ * and `events.actor.user`.
  */
 export default class TicketTransformer extends BaseTransformer<Ticket> {
   toObject() {
@@ -29,7 +30,12 @@ export default class TicketTransformer extends BaseTransformer<Ticket> {
       lastMessage:
         last === undefined
           ? null
-          : { direction: last.direction, text: last.content.text, sentAt: last.sentAt },
+          : {
+              direction: last.direction,
+              text: last.content.text,
+              sentAt: last.sentAt,
+              author: last.author === null ? null : last.author.ref,
+            },
     }
   }
 
