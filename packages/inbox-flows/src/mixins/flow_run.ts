@@ -26,6 +26,7 @@ export interface InboxFlowRunRow {
   revision: number
   vars: Variables
   waiting: RunWait | null
+  ticketVersion: number | null
   /**
    * When the run's wait is due, copied from `waiting` for the tick's index.
    */
@@ -54,6 +55,7 @@ export function withInboxFlowRun(): <M extends Model>(superclass: M) => InboxFlo
       declare status: FlowRun['status']
       declare liveTicketId: TicketId | null
       declare revision: number
+      declare ticketVersion: number | null
       declare wakeAt: DateTime | null
       declare deadline: DateTime | null
       declare endedReason: RunEndReason | null
@@ -103,7 +105,9 @@ function toRun(row: Omit<InboxFlowRunRow, 'asRun'>): FlowRun {
 
       break
     case 'running':
-      if (row.waiting !== null) return { ...base, status: 'running', wait: row.waiting }
+      if (row.waiting !== null && row.ticketVersion !== null) {
+        return { ...base, status: 'running', wait: row.waiting, ticketVersion: row.ticketVersion }
+      }
 
       break
     case 'ended':

@@ -251,6 +251,7 @@ export class InboxFlowRunSchema extends BaseModel {
     'startedById',
     'status',
     'ticketId',
+    'ticketVersion',
     'updatedAt',
     'vars',
     'versionId',
@@ -284,6 +285,8 @@ export class InboxFlowRunSchema extends BaseModel {
   declare status: string
   @column()
   declare ticketId: number
+  @column()
+  declare ticketVersion: number | null
   @column.dateTime({ autoCreate: true, autoUpdate: true })
   declare updatedAt: DateTime | null
   @column()

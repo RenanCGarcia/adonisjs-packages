@@ -60,7 +60,14 @@ interface RunBase {
  */
 export type FlowRun =
   | (RunBase & { status: 'pending'; deadline: DateTime })
-  | (RunBase & { status: 'running'; wait: RunWait })
+  | (RunBase & {
+      status: 'running'
+      wait: RunWait
+      /**
+       * The ticket's version once the bot turn that last wrote the run committed.
+       */
+      ticketVersion: number
+    })
   | (RunBase & {
       status: 'ended'
       reason: RunEndReason
@@ -132,7 +139,7 @@ export function startToken(runId: FlowRunId) {
 }
 
 export type TurnTrigger =
-  | { kind: 'assigned' }
+  | { kind: 'assigned'; version: number }
   | { kind: 'message' }
   | { kind: 'wake'; token: string }
 
@@ -152,16 +159,17 @@ export type TurnPlan =
 /**
  * The turn table, by trigger and live run:
  *
- * | trigger    | no live run | pending | running                                   |
- * |------------|-------------|---------|-------------------------------------------|
- * | `assigned` | select      | enter   | select, superseding it                    |
- * | `message`  | select      | enter   | resume                                    |
- * | `wake`     | idle        | enter   | resume when the token names it, else idle |
+ * | trigger    | no live run | pending | running                                                 |
+ * |------------|-------------|---------|---------------------------------------------------------|
+ * | `assigned` | select      | enter   | idle when written after the handover, else supersede it |
+ * | `message`  | select      | enter   | resume                                                  |
+ * | `wake`     | idle        | enter   | resume when the token names it, else idle               |
  *
  * A turn only runs while the bot holds the ticket, so a pending run is entered whatever woke the
- * bot: it was made for this ticket. The bot can't be handed a ticket it already holds, so an
- * `assigned` turn over a running run means the ticket left the bot and came back, and that run
- * is over.
+ * bot: it was made for this ticket. The inbox runs an `assigned` turn again on a fresh read when
+ * its commit conflicts, so a running run it finds may be one another turn wrote since the
+ * handover, at a later ticket version. One written before the handover means the ticket left the
+ * bot and came back without the run hearing of it, and that run is over.
  */
 export function decideTurn(trigger: TurnTrigger, live: LiveRun | null): TurnPlan {
   if (live === null)
@@ -171,7 +179,9 @@ export function decideTurn(trigger: TurnTrigger, live: LiveRun | null): TurnPlan
 
   switch (trigger.kind) {
     case 'assigned':
-      return { kind: 'select', supersede: live }
+      return live.ticketVersion > trigger.version
+        ? { kind: 'idle' }
+        : { kind: 'select', supersede: live }
     case 'message':
       return { kind: 'resume', run: live, trigger }
     case 'wake': {

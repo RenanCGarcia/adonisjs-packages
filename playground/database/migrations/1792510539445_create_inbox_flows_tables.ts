@@ -83,6 +83,8 @@ export default class extends BaseSchema {
       table.integer('revision').notNullable().defaultTo(0)
       table.text('vars').notNullable()
       table.text('waiting').nullable()
+      // The ticket's version once the bot turn that last wrote the run committed.
+      table.integer('ticket_version').nullable()
       table.timestamp('wake_at').nullable()
       table.timestamp('deadline').nullable()
       table.string('ended_reason').nullable()
@@ -104,7 +106,7 @@ export default class extends BaseSchema {
 
       // These mirror the FlowRun sum type, so every stored row parses.
       table.check(
-        "(status = 'pending' AND live_ticket_id = ticket_id AND deadline IS NOT NULL AND waiting IS NULL AND ended_reason IS NULL) OR (status = 'running' AND live_ticket_id = ticket_id AND waiting IS NOT NULL AND ended_reason IS NULL) OR (status = 'ended' AND live_ticket_id IS NULL AND waiting IS NULL AND wake_at IS NULL AND ended_reason IS NOT NULL AND ended_at IS NOT NULL)",
+        "(status = 'pending' AND live_ticket_id = ticket_id AND deadline IS NOT NULL AND waiting IS NULL AND ended_reason IS NULL) OR (status = 'running' AND live_ticket_id = ticket_id AND waiting IS NOT NULL AND ticket_version IS NOT NULL AND ended_reason IS NULL) OR (status = 'ended' AND live_ticket_id IS NULL AND waiting IS NULL AND wake_at IS NULL AND ended_reason IS NOT NULL AND ended_at IS NOT NULL)",
         [],
         'inbox_flow_runs_status',
       )

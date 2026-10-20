@@ -87,7 +87,11 @@ export default class FlowsBot implements Bot<null> {
 
   async turn(turn: BotTurn<null>): Promise<BotReply<null>> {
     const trigger: TurnTrigger =
-      turn.trigger === 'wake' ? { kind: 'wake', token: turn.token } : { kind: turn.trigger }
+      turn.trigger === 'wake'
+        ? { kind: 'wake', token: turn.token }
+        : turn.trigger === 'assigned'
+          ? { kind: 'assigned', version: turn.version }
+          : { kind: 'message' }
 
     const plan = decideTurn(trigger, await this.#runtime.live(turn.ticket.id))
 
@@ -347,6 +351,7 @@ export default class FlowsBot implements Bot<null> {
         ? {
             status: 'running' as const,
             liveTicketId: ticket.id,
+            ticketVersion: ticket.version,
             vars: outcome.state.vars,
             waiting: {
               waiting: outcome.state.waiting,

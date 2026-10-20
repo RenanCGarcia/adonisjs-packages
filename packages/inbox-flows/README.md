@@ -279,7 +279,7 @@ await inboxFlows.stop(ticketId, actor)
 // { outcome: 'stopped', run } | { outcome: 'not_running' }
 ```
 
-`start` stores a `pending` run pinned to the flow's published version. A ticket the bot holds is woken. Any other ticket is assigned to the bot as `actor`, so `config.authorize` decides. A run already live on the ticket ends `replaced`. A manual start ignores the bindings and the rule above.
+`start` stores a `pending` run pinned to the flow's published version. A ticket the bot holds is woken. Any other ticket is assigned to the bot as `actor`, so `config.authorize` decides. A run already live on the ticket ends `replaced`, so starts at once on one ticket leave one run and end the others `replaced`. A manual start ignores the bindings and the rule above.
 
 `stop` ends the live run `stopped` and returns the ticket when the bot holds it.
 
@@ -287,18 +287,18 @@ await inboxFlows.stop(ticketId, actor)
 
 ### A person taking over
 
-A person replying to a ticket the bot holds takes it in the same write, so a bot turn in flight fails its commit and sends nothing. The provider listens to `inbox:ticket_changed` and ends the run `taken_over`. The tick does the same for a change the listener missed, and the bot ends such a run itself if it ever gets the ticket back first.
+A person replying to a ticket the bot holds takes it in the same write, so a bot turn in flight fails its commit and sends nothing. The provider listens to `inbox:ticket_changed` and ends the run `taken_over`. The tick does the same for a change the listener missed, and the bot ends such a run itself if it ever gets the ticket back first. It tells that run from its own by `ticket_version`, the ticket's version when a turn last wrote the run: a run written before the handover is from before the ticket left, while a later one is a run the bot wrote since, which a rerun of the handover's turn leaves alone.
 
 ## How a run is stored
 
 A row of `inbox_flow_runs` is the only record of a run: its status, its pinned version, where it waits, its variables, when it is due, and why it ended. The bot keeps nothing in the inbox's `botState`.
 
-| Writer                    | Runs in                                                   | Writes                                                                                                                                                        |
-| ------------------------- | --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| The bot's turn            | the inbox's ticket transaction, through `BotReply.within` | inserts a running or ended run from a binding; moves a run from `pending` or `running` to `running` or `ended`: `waiting`, `vars`, `wake_at`, the end columns |
-| `start`                   | its own transaction                                       | inserts a `pending` run; ends the live one `replaced` or `taken_over`                                                                                         |
-| `stop`                    | a single update                                           | ends the live run `stopped`                                                                                                                                   |
-| The listener and the tick | a single update each                                      | end a live run `taken_over`, `ticket_closed` or `start_expired`                                                                                               |
+| Writer                    | Runs in                                                   | Writes                                                                                                                                                                          |
+| ------------------------- | --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| The bot's turn            | the inbox's ticket transaction, through `BotReply.within` | inserts a running or ended run from a binding; moves a run from `pending` or `running` to `running` or `ended`: `waiting`, `vars`, `wake_at`, `ticket_version`, the end columns |
+| `start`                   | its own transaction                                       | inserts a `pending` run; ends the live one `replaced` or `taken_over`                                                                                                           |
+| `stop`                    | a single update                                           | ends the live run `stopped`                                                                                                                                                     |
+| The listener and the tick | a single update each                                      | end a live run `taken_over`, `ticket_closed` or `start_expired`                                                                                                                 |
 
 - Every update compares and bumps `revision`. A bot turn whose run moved since it read it answers `stale`, and the inbox runs the turn again on a fresh read. The bot's turns already serialize on the ticket's row.
 - `live_ticket_id` holds the ticket id while a run is `pending` or `running`, and `NULL` once it ended. Its plain unique index keeps one live run per ticket on every database, since `NULL`s never collide.
