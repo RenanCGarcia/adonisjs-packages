@@ -276,6 +276,27 @@ test.group('activating flows', group => {
     assert.deepEqual(await flows.bindings.list(flowId), [])
   })
 
+  test('bindings set at once leave one of the sets, not their union', async ({ assert }) => {
+    const { flows } = flowsApp
+    const { flowId } = await flowsApp.published(says('Hi?'))
+    const channels = await Promise.all([1, 2, 3, 4].map(() => channelIn(flowsApp.app, 'flows')))
+
+    const results = await Promise.all(
+      channels.map(({ channelId }) =>
+        flows.bindings.set(flowId, [{ priority: 0, channelId, queueId: null, condition: null }]),
+      ),
+    )
+
+    const listed = await flows.bindings.list(flowId)
+
+    assert.isTrue(results.every(result => result.outcome === 'saved'))
+    assert.lengthOf(listed, 1)
+    assert.oneOf(
+      listed[0]?.channelId,
+      channels.map(({ channelId }) => channelId),
+    )
+  })
+
   test('the bot returns a ticket no binding wants', async ({ assert }) => {
     const channel = await channelIn(flowsApp.app, 'flows')
 
