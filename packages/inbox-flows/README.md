@@ -278,6 +278,8 @@ await inboxFlows.bindings.set(flow.id, [
 
 The bot never starts a flow by binding on a ticket where an earlier run ended `handed_off`, `taken_over` or `stopped`. A person owns that ticket now.
 
+With the inbox's `config.ownership` set, such as to a tenant, the bot only takes the bindings whose columns match what it returns for the ticket's channel, so a binding with no channel and no queue still applies to its own tenant only. The runs and the effects get those columns too, so every inbox-flows model needs them.
+
 ### Manual start and stop
 
 ```ts

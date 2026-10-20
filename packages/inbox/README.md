@@ -125,6 +125,7 @@ if (result.outcome === 'rejected') return response.conflict({ reason: result.rea
 | `ingest(token, request)`                       | The webhook entry. Returns `accepted`, `unknown_channel` or `invalid_signature`                                 |
 | `tick(now?)`                                   | Runs the tick automations, then `recover()`. `node ace inbox:tick` calls it                                     |
 | `recover()`                                    | Queues again webhooks and sends whose task was lost, and gives up on the ones older than a day                  |
+| `ownership(conversationId)`                    | What `config.ownership` fills on the rows of the conversation's channel, for a package's own rows               |
 
 There are no locks. `apply` reads the ticket, plans the gesture with the pure `plan` function and writes it with a compare-and-swap on `version`. When another write landed in between, it reads and plans again, up to three times, and then gives up with `conflict`. A unique index on the open conversation keeps one open ticket per conversation. This works the same on sqlite, pg and mysql.
 

@@ -1,4 +1,5 @@
 import type { TransactionClientContract } from '@adonisjs/lucid/types/database'
+import type { LucidRow } from '@adonisjs/lucid/types/model'
 import vine from '@vinejs/vine'
 import {
   adapters,
@@ -7,6 +8,7 @@ import {
   tasks,
   type Actor,
   type ChannelId,
+  type Ownership,
   type TaskDriverFactory,
   type TicketId,
 } from '@enzopita/adonisjs-inbox'
@@ -115,7 +117,7 @@ export const MAX_STEPS = 12
 /**
  * The flows models of an app laid out as `node ace configure` writes them.
  */
-function flowModelsIn(appRoot: URL): FlowsModels {
+export function flowModelsIn(appRoot: URL): FlowsModels {
   const model = (path: string) => () => import(new URL(`app/models/inbox/${path}.ts`, appRoot).href)
 
   return {
@@ -141,13 +143,19 @@ const validatePublish = ({ flowId }: PublishCheck) =>
  * The playground booted in this process with the flows provider, the flows bot on `flows`
  * channels, the fake adapter, and the `note` and `notify` effect nodes.
  */
-export async function bootFlows(options: { tasks?: TaskDriverFactory } = {}) {
+export async function bootFlows(
+  options: {
+    tasks?: TaskDriverFactory
+    ownership?: (channel: LucidRow) => Ownership
+    models?: Partial<ReturnType<typeof modelsIn> & FlowsModels>
+  } = {},
+) {
   await migrateApp(playground)
 
   const app = await bootApp(
     playground,
     defineInboxConfig({
-      models: modelsIn(playground),
+      models: { ...modelsIn(playground), ...options.models },
       bots: { flows: () => import('../src/bot.ts') },
       automations: [
         automations.assignOnOpen({
@@ -157,13 +165,14 @@ export async function bootFlows(options: { tasks?: TaskDriverFactory } = {}) {
       ],
       channels: { fake: adapters.fake(fake), flows: adapters.fake(fake) },
       tasks: options.tasks ?? tasks.inline(),
+      ownership: options.ownership,
     }),
     {
       providers: [() => import('../providers/inbox_flows_provider.ts')],
       config: {
         inbox_flows: defineConfig({
           bot: 'flows',
-          models: flowModelsIn(playground),
+          models: { ...flowModelsIn(playground), ...options.models },
           nodes: defineNodes([...builtins, note, notify]),
           debounce: { milliseconds: 0 },
           maxSteps: MAX_STEPS,

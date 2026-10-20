@@ -7,7 +7,7 @@ import { DateTime, Duration, type DurationLike } from 'luxon'
 
 import type { ContactIdentity, NormalizedEvent, WebhookRequest } from './adapters/port.ts'
 import { whereCandidates, type Automation, type Effect } from './automations.ts'
-import type { AuthorizeQuestion, ResolvedInboxConfig } from './define_config.ts'
+import type { AuthorizeQuestion, Ownership, ResolvedInboxConfig } from './define_config.ts'
 import type { InboundMessage } from './bots.ts'
 import { InboxError } from './errors.ts'
 import { dispatchMessage, whereClaimable, whereInFlight } from './internal/outbox.ts'
@@ -209,6 +209,14 @@ export class Inbox {
    */
   model<R extends ModelRole>(role: R): Promise<InboxModelOf<R>> {
     return this.#config.model(role)
+  }
+
+  /**
+   * What `config.ownership` fills on the rows created from the conversation's channel, for a
+   * package that creates rows of its own for the conversation's tickets.
+   */
+  async ownership(conversationId: ConversationId): Promise<Ownership> {
+    return this.#config.ownership(await this.#channelOf(conversationId))
   }
 
   readonly tickets = {

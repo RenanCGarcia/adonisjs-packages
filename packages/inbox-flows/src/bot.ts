@@ -7,6 +7,7 @@ import type {
   BotTurn,
   BotWithin,
   MessageContent,
+  Ownership,
   TicketSnapshot,
 } from '@enzopita/adonisjs-inbox'
 import { DateTime } from 'luxon'
@@ -59,6 +60,11 @@ interface Turn {
   supersede: RunningRun | null
   outcome: Advanced
   version: number
+  /**
+   * What the inbox's `ownership` fills on the rows of the ticket's channel, for the run and its
+   * effects.
+   */
+  owned: Ownership
 }
 
 /**
@@ -95,24 +101,26 @@ export default class FlowsBot implements Bot<null> {
 
     const plan = decideTurn(trigger, await this.#runtime.live(turn.ticket.id))
 
+    if (plan.kind === 'idle') return SILENT
+
+    const owned = await this.#runtime.inbox.ownership(turn.ticket.conversationId)
+
     switch (plan.kind) {
-      case 'idle':
-        return SILENT
       case 'select':
-        return this.#select(turn, plan.supersede)
+        return this.#select(turn, plan.supersede, owned)
       case 'enter':
-        return this.#enter(turn, plan.run)
+        return this.#enter(turn, plan.run, owned)
       case 'resume':
-        return this.#resume(turn, plan.run, plan.trigger)
+        return this.#resume(turn, plan.run, plan.trigger, owned)
     }
   }
 
-  async #select(turn: BotTurn<null>, supersede: RunningRun | null) {
+  async #select(turn: BotTurn<null>, supersede: RunningRun | null, owned: Ownership) {
     const vetoed = supersede !== null || (await this.#runtime.vetoed(turn.ticket.id))
 
     const binding = vetoed
       ? null
-      : matchBinding(await this.#runtime.bindings(), {
+      : matchBinding(await this.#runtime.bindings(owned), {
           channelId: turn.channel.id,
           queueId: turn.ticket.state.queueId,
           message: turn.unanswered.map(({ content }) => content.text).join('\n'),
@@ -132,10 +140,11 @@ export default class FlowsBot implements Bot<null> {
       supersede,
       outcome: this.#start(version, turn),
       version: version.number,
+      owned,
     })
   }
 
-  async #enter(turn: BotTurn<null>, run: PendingRun) {
+  async #enter(turn: BotTurn<null>, run: PendingRun, owned: Ownership) {
     const version = await this.#runtime.compiled(run.versionId)
 
     return this.#reply(turn, {
@@ -143,10 +152,11 @@ export default class FlowsBot implements Bot<null> {
       supersede: null,
       outcome: this.#start(version, turn),
       version: version.number,
+      owned,
     })
   }
 
-  async #resume(turn: BotTurn<null>, run: RunningRun, trigger: Trigger) {
+  async #resume(turn: BotTurn<null>, run: RunningRun, trigger: Trigger, owned: Ownership) {
     const version = await this.#runtime.compiled(run.versionId)
     const state: RunState = { status: 'waiting', vars: run.vars, ...run.wait }
 
@@ -167,6 +177,7 @@ export default class FlowsBot implements Bot<null> {
       supersede: null,
       outcome,
       version: version.number,
+      owned,
     })
   }
 
@@ -246,7 +257,7 @@ export default class FlowsBot implements Bot<null> {
       return 'stale'
     }
 
-    const runId = await this.#writeRun(trx, ticket, target, outcome, now)
+    const runId = await this.#writeRun(trx, ticket, planned, now)
 
     if (runId === null) return 'stale'
 
@@ -260,7 +271,7 @@ export default class FlowsBot implements Bot<null> {
     const outbox: FlowEffectId[] = []
 
     for (const effect of kept) {
-      const id = await this.#perform(trx, ticket, run, effect, now)
+      const id = await this.#perform(trx, ticket, run, effect, planned.owned, now)
 
       if (id !== null) outbox.push(id)
     }
@@ -297,6 +308,7 @@ export default class FlowsBot implements Bot<null> {
     ticket: TicketSnapshot,
     run: { id: FlowRunId; flowId: FlowId; versionId: FlowVersionId },
     effect: EmittedEffect,
+    owned: Ownership,
     now: DateTime,
   ) {
     const resolved = await this.#runtime.effect(effect.type)
@@ -317,6 +329,7 @@ export default class FlowsBot implements Bot<null> {
 
     const row = await FlowEffect.create(
       {
+        ...owned,
         runId: run.id,
         ticketId: ticket.id,
         nodeId: effect.node,
@@ -340,8 +353,7 @@ export default class FlowsBot implements Bot<null> {
   async #writeRun(
     trx: Parameters<BotWithin>[0],
     ticket: TicketSnapshot,
-    target: Target,
-    outcome: Advanced,
+    { target, outcome, owned }: Turn,
     now: DateTime,
   ): Promise<FlowRunId | null> {
     const FlowRun = await this.#runtime.model('flowRun')
@@ -377,6 +389,7 @@ export default class FlowsBot implements Bot<null> {
     if (target.kind === 'insert') {
       const row = await FlowRun.create(
         {
+          ...owned,
           ...columns,
           ticketId: ticket.id,
           flowId: target.flowId,

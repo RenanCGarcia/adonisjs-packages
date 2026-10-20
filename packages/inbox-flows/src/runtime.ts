@@ -2,7 +2,7 @@ import type { ApplicationService, ContainerBindings, LoggerService } from '@adon
 import type { Database } from '@adonisjs/lucid/database'
 import type { QueryClientContract } from '@adonisjs/lucid/types/database'
 import vine from '@vinejs/vine'
-import type { AttendantId, JsonValue, TicketId } from '@enzopita/adonisjs-inbox'
+import type { AttendantId, JsonValue, Ownership, TicketId } from '@enzopita/adonisjs-inbox'
 import type {} from '@enzopita/adonisjs-inbox/inbox_provider'
 import { DateTime } from 'luxon'
 
@@ -112,12 +112,19 @@ export class FlowsRuntime {
   }
 
   /**
-   * Every binding of a flow that has a published version, with that version.
+   * Every binding with the columns in `owned` of a flow that has a published version, with that
+   * version. A binding of another owner never applies, even one that names no channel or queue.
    */
-  async bindings(): Promise<Array<Binding & { versionId: FlowVersionId }>> {
+  async bindings(owned: Ownership): Promise<Array<Binding & { versionId: FlowVersionId }>> {
     const FlowBinding = await this.model('flowBinding')
     const Flow = await this.model('flow')
-    const rows = await FlowBinding.query()
+
+    const rows = await FlowBinding.query().where(query => {
+      for (const [attribute, value] of Object.entries(owned)) {
+        if (value === null) query.whereNull(attribute)
+        else if (value !== undefined) query.where(attribute, value)
+      }
+    })
 
     if (rows.length === 0) return []
 

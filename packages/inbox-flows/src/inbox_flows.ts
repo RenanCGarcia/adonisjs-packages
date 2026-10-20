@@ -313,6 +313,7 @@ export class InboxFlows {
     if (versionId === null) return { outcome: 'rejected', reason: 'not_published' }
 
     const botId = await runtime.botId()
+    const owned = await runtime.inbox.ownership((await Ticket.findOrFail(ticketId)).conversationId)
 
     for (let attempt = 0; attempt < ATTEMPTS; attempt++) {
       const ticket = (await Ticket.findOrFail(ticketId)).snapshot
@@ -334,6 +335,7 @@ export class InboxFlows {
 
           return FlowRun.create(
             {
+              ...owned,
               ticketId,
               flowId,
               versionId,
