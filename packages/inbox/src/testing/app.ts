@@ -1,4 +1,6 @@
 import { execFile } from 'node:child_process'
+import { randomUUID } from 'node:crypto'
+import { cp, mkdir, readdir, rm } from 'node:fs/promises'
 import { promisify } from 'node:util'
 
 import { IgnitorFactory } from '@adonisjs/core/factories'
@@ -40,6 +42,31 @@ export async function migrateApp(appRoot: URL) {
   await run('node', ['ace', 'migration:run', '--force', '--no-schema-generate'], {
     cwd: appRoot,
   })
+}
+
+/**
+ * A copy of the app under its own `tmp/`, with its own sqlite file and only the migrations
+ * `keep` picks, for running migrations on a schema of their own. It resolves packages through
+ * the app's `node_modules`.
+ */
+export async function copyApp(appRoot: URL, keep: (migration: string) => boolean) {
+  const root = new URL(`tmp/copy-${randomUUID()}/`, appRoot)
+
+  for (const entry of await readdir(appRoot)) {
+    if (['node_modules', 'tmp', 'build'].includes(entry)) continue
+
+    await cp(new URL(entry, appRoot), new URL(entry, root), { recursive: true })
+  }
+
+  await mkdir(new URL('tmp/', root))
+
+  const migrations = new URL('database/migrations/', root)
+
+  for (const file of await readdir(migrations)) {
+    if (!keep(file)) await rm(new URL(file, migrations))
+  }
+
+  return { root, remove: () => rm(root, { recursive: true, force: true }) }
 }
 
 /**

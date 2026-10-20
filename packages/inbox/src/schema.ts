@@ -1,0 +1,95 @@
+import { stubsRoot } from '../stubs/main.ts'
+import { defineMigrations } from './migrations.ts'
+import type { ModelRole } from './models.ts'
+
+/**
+ * The migrations the inbox ships. A schema change after a release is a new entry with its own
+ * stub, never an edit to a released one, because hosts already ran and own those.
+ */
+export const INBOX_MIGRATIONS = defineMigrations<ModelRole>({
+  package: 'inbox',
+  command: 'inbox:migrations',
+  stubsRoot,
+  entries: [
+    {
+      id: '0001',
+      name: 'create_inbox_tables',
+      columns: {
+        queue: ['id', 'name', 'created_at', 'updated_at'],
+        attendant: [
+          'id',
+          'kind',
+          'user_id',
+          'bot_key',
+          'deactivated_at',
+          'created_at',
+          'updated_at',
+        ],
+        queueMember: ['id', 'queue_id', 'attendant_id', 'created_at', 'updated_at'],
+        channel: [
+          'id',
+          'provider',
+          'name',
+          'default_queue_id',
+          'webhook_token',
+          'credentials',
+          'status',
+          'archived_at',
+          'created_at',
+          'updated_at',
+        ],
+        channelEvent: ['id', 'channel_id', 'raw_body', 'received_at', 'processed_at', 'failed_at'],
+        contact: ['id', 'channel_id', 'address', 'name', 'created_at', 'updated_at'],
+        conversation: ['id', 'channel_id', 'contact_id', 'created_at', 'updated_at'],
+        ticket: [
+          'id',
+          'conversation_id',
+          'open_conversation_id',
+          'queue_id',
+          'assignee_id',
+          'assignee_kind',
+          'status',
+          'close_reason',
+          'version',
+          'bot_state',
+          'unread_count',
+          'opened_at',
+          'assigned_at',
+          'first_response_at',
+          'last_activity_at',
+          'closed_at',
+          'created_at',
+          'updated_at',
+        ],
+        ticketEvent: [
+          'id',
+          'ticket_id',
+          'type',
+          'data',
+          'actor_kind',
+          'actor_id',
+          'actor_source',
+          'note',
+          'created_at',
+        ],
+        message: [
+          'id',
+          'conversation_id',
+          'ticket_id',
+          'direction',
+          'kind',
+          'body',
+          'status',
+          'author_id',
+          'external_id',
+          'client_ref',
+          'failure_code',
+          'sent_at',
+          'dispatched_at',
+          'created_at',
+          'updated_at',
+        ],
+      },
+    },
+  ],
+})

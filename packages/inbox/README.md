@@ -17,10 +17,23 @@ node ace migration:run
 
 - registers `@enzopita/adonisjs-inbox/inbox_provider` and the `@enzopita/adonisjs-inbox/commands` ace commands in `adonisrc.ts`;
 - writes `config/inbox.ts`;
-- writes one migration, `database/migrations/<timestamp>_create_inbox_tables.ts`, with the `inbox_*` tables inline, so you can add your own columns (a `tenant_id`, say) before you run it;
+- writes the migrations, today one, `database/migrations/<timestamp>_inbox_0001_create_inbox_tables.ts`, with the `inbox_*` tables inline, so you can add your own columns (a `tenant_id`, say) before you run it;
 - writes ten models under `app/models/inbox/`, each `compose(InboxXSchema, withInboxX())` with its relations declared.
 
 `migration:run` creates the tables and regenerates `database/schema.ts`, which the models extend. Then schedule `node ace inbox:tick` every minute, from cron or a scheduler (see [Tick and recovery](#tick-and-recovery)).
+
+## Upgrading
+
+```sh
+node ace inbox:migrations
+node ace migration:run
+```
+
+A release that changes the schema ships a new migration instead of editing the one you have. `inbox:migrations` writes each migration this version needs and `database/migrations` lacks, in order and timestamped after your newest one, and prints what it wrote. A second run writes nothing. It knows a migration by the id in its file name, `<timestamp>_inbox_<id>_<name>.ts`, so keep that part of the name if you rename or move one. The contents are yours to edit: it never opens or rewrites a file you have.
+
+`node ace inbox:migrations --check` writes nothing and exits with 1 when a migration is missing, for CI.
+
+Until you migrate, the first use of a model that lacks one of the package's columns throws an `InboxError` with the code `E_INBOX_SCHEMA_OUTDATED`, naming the column, the migration and these two commands. The check reads the model's columns, which `migration:run` regenerates in `database/schema.ts`, so it runs no query.
 
 ## Config
 
@@ -265,4 +278,4 @@ Run it every minute. It calls `inbox.tick()`, which runs the tick automations an
 
 ## Pure parts
 
-`plan(ticket, gesture, actor, context)` is the ticket state machine as a pure function, exported with `holder`, `planOpening` and `KIND_RULES`. The domain types come from `@enzopita/adonisjs-inbox/types`. `InboxError`, with a stable `code`, is thrown only for broken config, rows the CHECK constraints forbid and programmer errors.
+`plan(ticket, gesture, actor, context)` is the ticket state machine as a pure function, exported with `holder`, `planOpening` and `KIND_RULES`. The domain types come from `@enzopita/adonisjs-inbox/types`. `InboxError`, with a stable `code`, is thrown only for broken config, a schema behind the package's migrations, rows the CHECK constraints forbid and programmer errors.

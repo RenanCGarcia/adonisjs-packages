@@ -6,8 +6,10 @@ import { AdapterRegistry } from './adapters/registry.ts'
 import type { Automation } from './automations.ts'
 import type { Bot, BotLoader } from './bots.ts'
 import { InboxError } from './errors.ts'
+import { assertSchema } from './migrations.ts'
 import type { InboxModelOf } from './mixins/main.ts'
 import { MODEL_ROLES, type ModelRole } from './models.ts'
+import { INBOX_MIGRATIONS } from './schema.ts'
 import { tasks, type TaskDriverFactory } from './tasks.ts'
 import type { Actor, Gesture, JsonValue, TicketSnapshot } from './types.ts'
 
@@ -163,6 +165,8 @@ async function resolve<Bots extends Record<string, BotLoader>>(
           `inbox: config.models.${role} is a model without the ${role} mixin from @enzopita/adonisjs-inbox/mixins`,
         )
       }
+
+      assertSchema(INBOX_MIGRATIONS, role, model)
 
       return model
     },
