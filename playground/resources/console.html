@@ -901,7 +901,7 @@
       function ticketQuery() {
         const { status, queueId, assignee, channelId, search } = state.filter
         const query = new URLSearchParams({ page: state.page, perPage: 20 })
-        if (status.size > 0) query.set('status', [...status].join(','))
+        for (const one of status) query.append('status', one)
         if (queueId) query.set('queueId', queueId)
         if (assignee) query.set('assignee', assignee)
         if (channelId) query.set('channelId', channelId)

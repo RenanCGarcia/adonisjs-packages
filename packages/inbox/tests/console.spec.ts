@@ -163,6 +163,7 @@ test.group('the console API', group => {
     const open = await list('&status=queued,in_progress')
     assert.deepEqual(ids(open), [waiting.ticketId, held.ticketId])
     assert.deepEqual(open.counts, { queued: 1, in_progress: 1, closed: 1 })
+    assert.deepEqual(ids(await list('&status=queued&status=in_progress')), ids(open))
 
     assert.deepEqual(ids(await list('&assignee=unassigned')), [waiting.ticketId])
     assert.deepEqual(ids(await list(`&assignee=${me.id}&status=in_progress`)), [held.ticketId])
