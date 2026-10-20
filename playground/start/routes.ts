@@ -47,8 +47,6 @@ router
   })
   .prefix('/api/v1')
 
-router.get('/console', [controllers.InboxConsole, 'show']).as('inbox.console')
-
 router
   .group(() => {
     router.get('tickets', [controllers.InboxTickets, 'index'])
