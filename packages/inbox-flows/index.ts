@@ -42,7 +42,27 @@ export {
 
 export type { FlowBindingId, FlowEffectId, FlowId, FlowRunId, FlowVersionId } from './src/types.ts'
 
+export {
+  defineConfig,
+  type FlowsModels,
+  type InboxFlowsConfig,
+  type PublishCheck,
+} from './src/define_config.ts'
+
 export { InboxFlowsError, type InboxFlowsErrorCode } from './src/errors.ts'
+
+export {
+  TICK_BATCH,
+  type BindingsResult,
+  type FlowsCatalog,
+  type FlowsTickReport,
+  type FlowVersionView,
+  type FlowView,
+  type PublishResult,
+  type SaveDraftResult,
+  type StartResult,
+  type StopResult,
+} from './src/inbox_flows.ts'
 
 export { FLOWS_MODEL_ROLES, type FlowsModelRole } from './src/models.ts'
 
@@ -55,6 +75,8 @@ export {
   type RunningRun,
   type RunWait,
 } from './src/run.ts'
+
+export { EFFECT_POLICY, type DeliveryOutcome } from './src/runtime.ts'
 
 export { graphHash } from './src/graph_hash.ts'
 
