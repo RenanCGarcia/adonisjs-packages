@@ -338,6 +338,38 @@ test.group('activating flows', group => {
     ])
   })
 
+  test('manual starts at once leave one run, which runs, and replace the others', async ({
+    assert,
+  }) => {
+    const { flows } = flowsApp
+
+    for (let round = 0; round < 6; round++) {
+      const channel = await channelIn(flowsApp.app, 'fake')
+
+      const published = await Promise.all(
+        ['One?', 'Two?', 'Three?'].map(text => flowsApp.published(says(text))),
+      )
+
+      await channel.write('hello')
+
+      const ticketId = await channel.openTicket()
+
+      const results = await Promise.all(
+        published.map(({ flowId }) => flows.start(ticketId, flowId, SYSTEM)),
+      )
+
+      assert.isTrue(results.every(result => result.outcome === 'started'))
+
+      const runs = await flows.runs.forTicket(ticketId)
+
+      assert.sameDeepMembers(
+        runs.map(run => (run.status === 'ended' ? run.reason : run.status)),
+        ['running', 'replaced', 'replaced'],
+      )
+      assert.equal((await ticketRow(ticketId)).status, 'in_progress')
+    }
+  })
+
   test('a manual start of a flow with no published version is refused', async ({ assert }) => {
     const { flows } = flowsApp
     const channel = await channelIn(flowsApp.app, 'fake')
