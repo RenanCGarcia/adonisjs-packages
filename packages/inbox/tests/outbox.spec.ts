@@ -51,7 +51,7 @@ test.group('outbox', group => {
     const token = randomUUID()
     const [queueId] = await db.table('inbox_queues').insert({ name: 'support', created_at: now })
 
-    await db.table('inbox_channels').insert({
+    const [channelId] = await db.table('inbox_channels').insert({
       provider,
       name: 'test',
       default_queue_id: queueId,
@@ -87,7 +87,16 @@ test.group('outbox', group => {
     await inbox.queues.addMember(queueId as QueueId, agent)
 
     // SAFETY: the id of the ticket row the ingest opened.
-    return { receipt, address, agent, ticketId: ticket.id as TicketId }
+    return { receipt, address, agent, channelId, ticketId: ticket.id as TicketId }
+  }
+
+  /**
+   * A time as the playground's database stores it, `minutes` ago.
+   */
+  async function minutesAgo(minutes: number) {
+    const db = await app.container.make('lucid.db')
+
+    return DateTime.now().minus({ minutes }).toFormat(db.connection().dialect.dateTimeFormat)
   }
 
   async function messageRow(id: MessageId) {
@@ -204,5 +213,90 @@ test.group('outbox', group => {
     assert.deepEqual(result, { outcome: 'rejected', reason: 'unsupported_content' })
     assert.lengthOf(outbound, 0)
     assert.lengthOf(receiveOnly.sends, 0)
+  })
+
+  test('recover sends a pending message whose dispatch died, once its lease expired', async ({
+    assert,
+  }) => {
+    const { agent, ticketId } = await inboundTicket()
+    const db = await app.container.make('lucid.db')
+
+    fake.respond = async () => {
+      throw new Error('connection refused')
+    }
+
+    const result = await inbox.messages.send(ticketId, { kind: 'text', text: 'Late' }, agent)
+
+    if (result.outcome !== 'queued') throw new Error(`the send was ${result.outcome}`)
+
+    fake.respond = async () => ({ status: 'accepted', externalId: randomUUID() })
+
+    const sentAt = await minutesAgo(10)
+
+    const claimedAt = (dispatchedAt: string) =>
+      db
+        .from('inbox_messages')
+        .where('id', result.messageId)
+        .update({ sent_at: sentAt, dispatched_at: dispatchedAt })
+
+    await claimedAt(await minutesAgo(1))
+    await inbox.recover()
+
+    const leased = await messageRow(result.messageId)
+
+    await claimedAt(await minutesAgo(10))
+    await inbox.recover()
+    await inbox.recover()
+
+    assert.equal(leased.status, 'pending')
+    assert.lengthOf(fake.sends, 2)
+    assert.equal((await messageRow(result.messageId)).status, 'sent')
+  })
+
+  test('recover ingests a stored webhook whose task was lost', async ({ assert }) => {
+    const { address, channelId } = await inboundTicket()
+    const db = await app.container.make('lucid.db')
+
+    const store = async (externalId: string, receivedAt: string) => {
+      const [id] = await db.table('inbox_channel_events').insert({
+        channel_id: channelId,
+        raw_body: fakeWebhookBody({
+          type: 'message_received',
+          externalId,
+          from: { address },
+          content: { kind: 'text', text: 'are you there?' },
+          sentAt: DateTime.now(),
+        }),
+        received_at: receivedAt,
+      })
+
+      return id
+    }
+
+    const [lostId, freshId] = [randomUUID(), randomUUID()]
+    const lost = await store(lostId, await minutesAgo(10))
+    const fresh = await store(freshId, await minutesAgo(0))
+
+    await inbox.recover()
+
+    const processed = await db
+      .from('inbox_channel_events')
+      .whereIn('id', [lost, fresh])
+      .whereNotNull('processed_at')
+      .select('id')
+
+    const stored = await db
+      .from('inbox_messages')
+      .whereIn('external_id', [lostId, freshId])
+      .select('external_id')
+
+    assert.deepEqual(
+      processed.map(row => row.id),
+      [lost],
+    )
+    assert.deepEqual(
+      stored.map(row => row.external_id),
+      [lostId],
+    )
   })
 })

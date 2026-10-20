@@ -8,7 +8,7 @@ import { DateTime } from 'luxon'
 import type { ContactIdentity, NormalizedEvent, WebhookRequest } from './adapters/port.ts'
 import type { AuthorizeQuestion, ResolvedInboxConfig } from './define_config.ts'
 import { InboxError } from './errors.ts'
-import { dispatchMessage, whereInFlight } from './internal/outbox.ts'
+import { dispatchMessage, whereClaimable, whereInFlight } from './internal/outbox.ts'
 import {
   affectedRows,
   columnsOf,
@@ -21,7 +21,7 @@ import {
 import { toContentColumns } from './message/content.ts'
 import { advanceableFrom } from './message/status.ts'
 import type { InboxModelOf } from './mixins/main.ts'
-import { retryOf, type InboxTask, type TaskDriver } from './tasks.ts'
+import { DISPATCH_LEASE_MS, retryOf, type InboxTask, type TaskDriver } from './tasks.ts'
 import {
   holder,
   planChange,
@@ -327,6 +327,36 @@ export class Inbox {
     await this.#enqueue({ task: 'ingest', channelEventId: event.id, attempt: 0 })
 
     return 'accepted'
+  }
+
+  /**
+   * Queues again the work a lost task left behind, such as after a restart. That is stored
+   * webhooks never ingested and pending messages no dispatch owns, each older than a dispatch
+   * lease so the task that made it had its chance. Run it periodically.
+   */
+  async recover() {
+    const ChannelEvent = await this.#config.model('channelEvent')
+    const Message = await this.#config.model('message')
+    const now = DateTime.now()
+    const stale = sqlTime(Message, now.minus({ milliseconds: DISPATCH_LEASE_MS }))
+
+    const events = await ChannelEvent.query()
+      .whereNull('processedAt')
+      .where('receivedAt', '<', stale)
+      .select('id')
+
+    const messages = await Message.query()
+      .where(whereClaimable(Message, now))
+      .where('sentAt', '<', stale)
+      .select('id')
+
+    for (const { id } of events) {
+      await this.#enqueue({ task: 'ingest', channelEventId: id, attempt: 0 })
+    }
+
+    for (const { id } of messages) {
+      await this.#enqueue({ task: 'dispatch', messageId: id, attempt: 0 })
+    }
   }
 
   /**
