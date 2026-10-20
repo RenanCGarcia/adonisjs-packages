@@ -113,6 +113,10 @@ export default defineConfig({
       pattern: 'openapi.json',
       reloadServer: false,
     },
+    {
+      pattern: 'resources/console.html',
+      reloadServer: false,
+    },
   ],
 
   hooks: {
