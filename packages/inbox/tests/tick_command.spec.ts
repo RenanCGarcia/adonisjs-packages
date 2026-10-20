@@ -5,97 +5,85 @@ import { promisify } from 'node:util'
 import { test } from '@japa/runner'
 import { DateTime } from 'luxon'
 
-import { migratePlayground } from './helpers/app.ts'
-import { database } from './helpers/http.ts'
+import type { Database } from '@adonisjs/lucid/database'
+
+import { migratePlayground, playgroundDatabase, playgroundModels } from './helpers/app.ts'
 
 const playground = new URL('../../../playground/', import.meta.url)
 const run = promisify(execFile)
 
-const sqlTime = (time: DateTime) => time.toFormat('yyyy-MM-dd HH:mm:ss')
+let db: Database
 
 /**
  * An open ticket on its own queue, channel and contact, whose last activity was `idle` ago.
  */
-function ticketIdleFor(idle: { days: number }) {
-  const db = database()
-  const now = sqlTime(DateTime.now())
+async function ticketIdleFor(idle: { days: number }) {
+  const models = playgroundModels()
+  const { default: Queue } = await models.queue()
+  const { default: Channel } = await models.channel()
+  const { default: Contact } = await models.contact()
+  const { default: Conversation } = await models.conversation()
+  const { default: Ticket } = await models.ticket()
 
-  try {
-    const insert = (sql: string, ...params: Array<string | number>) =>
-      Number(db.prepare(sql).run(...params).lastInsertRowid)
+  const queue = await Queue.create({ name: 'support' })
 
-    const queueId = insert(
-      'INSERT INTO inbox_queues (name, created_at) VALUES (?, ?)',
-      'support',
-      now,
-    )
+  const channel = await Channel.create({
+    provider: 'fake',
+    name: 'test',
+    defaultQueueId: queue.id,
+    webhookToken: randomUUID(),
+    credentials: {},
+  })
 
-    const channelId = insert(
-      `INSERT INTO inbox_channels (provider, name, default_queue_id, webhook_token, credentials, created_at)
-       VALUES ('fake', 'test', ?, ?, '{}', ?)`,
-      queueId,
-      randomUUID(),
-      now,
-    )
+  const contact = await Contact.create({ channelId: channel.id, address: randomUUID() })
 
-    const contactId = insert(
-      'INSERT INTO inbox_contacts (channel_id, address, created_at) VALUES (?, ?, ?)',
-      channelId,
-      randomUUID(),
-      now,
-    )
+  const conversation = await Conversation.create({ channelId: channel.id, contactId: contact.id })
 
-    const conversationId = insert(
-      'INSERT INTO inbox_conversations (channel_id, contact_id, created_at) VALUES (?, ?, ?)',
-      channelId,
-      contactId,
-      now,
-    )
+  const ticket = await Ticket.create({
+    conversationId: conversation.id,
+    openConversationId: conversation.id,
+    queueId: queue.id,
+    status: 'queued',
+    version: 0,
+    botState: {},
+    unreadCount: 0,
+    openedAt: DateTime.now(),
+    lastActivityAt: DateTime.now().minus(idle),
+  })
 
-    return insert(
-      `INSERT INTO inbox_tickets (conversation_id, open_conversation_id, queue_id, status, version,
-         bot_state, unread_count, opened_at, last_activity_at, created_at)
-       VALUES (?, ?, ?, 'queued', 0, '{}', 0, ?, ?, ?)`,
-      conversationId,
-      conversationId,
-      queueId,
-      now,
-      sqlTime(DateTime.now().minus(idle)),
-      now,
-    )
-  } finally {
-    db.close()
-  }
+  return ticket.id
 }
 
 function ticketRow(id: number) {
-  const db = database()
-
-  try {
-    return db
-      .prepare('SELECT status, close_reason, version FROM inbox_tickets WHERE id = ?')
-      .get(id)
-  } finally {
-    db.close()
-  }
+  return db
+    .from('inbox_tickets')
+    .where('id', id)
+    .select('status', 'close_reason', 'version')
+    .first()
 }
 
 test.group('inbox:tick', group => {
-  group.setup(() => migratePlayground())
+  group.setup(async () => {
+    await migratePlayground()
+    const local = await playgroundDatabase()
+    db = local.db
+
+    return local.close
+  })
 
   test('closes the tickets the playground config finds inactive, once', async ({ assert }) => {
-    const stale = ticketIdleFor({ days: 3 })
-    const fresh = ticketIdleFor({ days: 0 })
+    const stale = await ticketIdleFor({ days: 3 })
+    const fresh = await ticketIdleFor({ days: 0 })
 
     const first = await run('node', ['ace', 'inbox:tick'], { cwd: playground })
     const second = await run('node', ['ace', 'inbox:tick'], { cwd: playground })
 
-    assert.deepInclude(ticketRow(stale), {
+    assert.deepInclude(await ticketRow(stale), {
       status: 'closed',
       close_reason: 'inactivity',
       version: 1,
     })
-    assert.deepInclude(ticketRow(fresh), { status: 'queued', version: 0 })
+    assert.deepInclude(await ticketRow(fresh), { status: 'queued', version: 0 })
     assert.match(first.stdout, /close_inactive: changed [1-9]\d* of/)
     assert.include(second.stdout, 'close_inactive: changed 0 of 0 candidate tickets')
   })

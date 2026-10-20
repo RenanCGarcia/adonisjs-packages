@@ -18,37 +18,24 @@ interface TicketEvent {
   actor_source: string | null
 }
 
-function eventsOf(ticket: Ticket) {
-  const db = database()
+async function eventsOf(ticket: Ticket) {
+  const rows = await database()
+    .from('inbox_ticket_events')
+    .where('ticket_id', ticket.id)
+    .orderBy('id')
+    .select('type', 'data', 'actor_kind', 'actor_id', 'actor_source')
 
-  try {
-    return db
-      .prepare(
-        'SELECT type, data, actor_kind, actor_id, actor_source FROM inbox_ticket_events WHERE ticket_id = ? ORDER BY id',
-      )
-      .all(ticket.id)
-      .map((row): TicketEvent => ({
-        type: String(row.type),
-        data: JSON.parse(String(row.data)),
-        actor_kind: String(row.actor_kind),
-        // SAFETY: actor_id is an integer column, read back as a number or null.
-        actor_id: row.actor_id as number | null,
-        // SAFETY: actor_source is a text column, read back as a string or null.
-        actor_source: row.actor_source as string | null,
-      }))
-  } finally {
-    db.close()
-  }
+  return rows.map((row): TicketEvent => ({
+    type: row.type,
+    data: JSON.parse(row.data),
+    actor_kind: row.actor_kind,
+    actor_id: row.actor_id,
+    actor_source: row.actor_source,
+  }))
 }
 
 function rowOf(ticket: Ticket) {
-  const db = database()
-
-  try {
-    return db.prepare('SELECT * FROM inbox_tickets WHERE id = ?').get(ticket.id)
-  } finally {
-    db.close()
-  }
+  return database().from('inbox_tickets').where('id', ticket.id).first()
 }
 
 test.group('tickets over HTTP', group => {
@@ -90,7 +77,7 @@ test.group('tickets over HTTP', group => {
       assignee: null,
       reason: 'manual',
     })
-    assert.deepEqual(eventsOf(ticket), [
+    assert.deepEqual(await eventsOf(ticket), [
       {
         type: 'opened',
         data: { fact: 'opened', queueId: support, origin: 'outbound' },
@@ -159,7 +146,7 @@ test.group('tickets over HTTP', group => {
     const again = await ana.assume(ticket)
 
     assert.equal(again.outcome, 'unchanged')
-    assert.lengthOf(eventsOf(ticket), 2)
+    assert.lengthOf(await eventsOf(ticket), 2)
   })
 
   test('a human takes a ticket back from the triage bot', async ({ assert }) => {
@@ -200,13 +187,13 @@ test.group('tickets over HTTP', group => {
         winner?.ticket.state.status === 'in_progress' && winner.ticket.state.assignee.id
 
       assert.lengthOf(others, 0)
-      assert.equal(rowOf(ticket)?.assignee_id, holder)
+      assert.equal((await rowOf(ticket))?.assignee_id, holder)
       assert.sameMembers(
         answers.filter(answer => answer.status !== 200).map(answer => answer.reason),
         Array.from({ length: agents.length - 1 }, () => 'held_by_other'),
       )
       assert.lengthOf(
-        eventsOf(ticket).filter(event => event.type === 'assignment_changed'),
+        (await eventsOf(ticket)).filter(event => event.type === 'assignment_changed'),
         1,
       )
     }
@@ -231,18 +218,15 @@ test.group('tickets over HTTP', group => {
     const ticket = await openTicket(ana, await queue(ana, ana, bea))
 
     await ana.assume(ticket)
-    const db = database()
-
-    db.prepare('UPDATE inbox_tickets SET unread_count = 3 WHERE id = ?').run(ticket.id)
-    db.close()
+    await database().from('inbox_tickets').where('id', ticket.id).update({ unread_count: 3 })
 
     await bea.post(`/inbox/tickets/${ticket.id}/read`)
-    const afterColleague = rowOf(ticket)?.unread_count
+    const afterColleague = (await rowOf(ticket))?.unread_count
 
     await ana.post(`/inbox/tickets/${ticket.id}/read`)
 
     assert.equal(afterColleague, 3)
-    assert.equal(rowOf(ticket)?.unread_count, 0)
+    assert.equal((await rowOf(ticket))?.unread_count, 0)
   })
 
   test('deactivating an attendant returns its tickets to the queue', async ({ assert }) => {
@@ -258,8 +242,8 @@ test.group('tickets over HTTP', group => {
     assert.equal(deactivated.status, 204)
 
     for (const ticket of tickets) {
-      assert.equal(rowOf(ticket)?.status, 'queued')
-      assert.deepInclude(eventsOf(ticket).at(-1), {
+      assert.equal((await rowOf(ticket))?.status, 'queued')
+      assert.deepInclude((await eventsOf(ticket)).at(-1), {
         type: 'assignment_changed',
         actor_kind: 'system',
         actor_source: 'attendant_deactivated',
@@ -282,31 +266,35 @@ test.group('tickets over HTTP', group => {
     const removed = await admin.del(`/inbox/queues/${support}/members/${carl.userId}`)
 
     assert.equal(removed.status, 204)
-    assert.equal(rowOf(inSupport)?.status, 'queued')
-    assert.equal(rowOf(inBilling)?.status, 'in_progress')
+    assert.equal((await rowOf(inSupport))?.status, 'queued')
+    assert.equal((await rowOf(inBilling))?.status, 'in_progress')
     assert.equal((await carl.assume(inSupport)).reason, 'not_member')
   })
 
   test('a conversation has one open ticket, and closing it frees the slot', async ({ assert }) => {
     const ana = await agent()
     const ticket = await openTicket(ana, await queue(ana, ana))
-    const conversationId = Number(rowOf(ticket)?.conversation_id)
+    const conversationId = Number((await rowOf(ticket))?.conversation_id)
 
     const reopened = await ana.post(`/inbox/conversations/${conversationId}/tickets`)
 
-    const db = database()
     const now = '2026-01-05 10:00:00'
 
     const secondOpen = () =>
-      db
-        .prepare(
-          `INSERT INTO inbox_tickets (conversation_id, open_conversation_id, queue_id, status, version, bot_state, unread_count, opened_at, last_activity_at, created_at)
-           VALUES (?, ?, ?, 'queued', 0, '{}', 0, ?, ?, ?)`,
-        )
-        .run(conversationId, conversationId, ticket.state.queueId, now, now, now)
+      database().table('inbox_tickets').insert({
+        conversation_id: conversationId,
+        open_conversation_id: conversationId,
+        queue_id: ticket.state.queueId,
+        status: 'queued',
+        version: 0,
+        bot_state: '{}',
+        unread_count: 0,
+        opened_at: now,
+        last_activity_at: now,
+        created_at: now,
+      })
 
-    assert.throws(secondOpen, /UNIQUE constraint failed: inbox_tickets.open_conversation_id/)
-    db.close()
+    await assert.rejects(secondOpen, /unique constraint.*open_conversation_id/i)
 
     await ana.post(`/inbox/tickets/${ticket.id}/close`, { reason: 'manual' })
     const afterClose = await ana.post(`/inbox/conversations/${conversationId}/tickets`)
@@ -319,31 +307,29 @@ test.group('tickets over HTTP', group => {
   test('the database refuses a ticket or attendant row the domain forbids', async ({ assert }) => {
     const ana = await agent()
     const ticket = await openTicket(ana, await queue(ana, ana))
-    const db = database()
+    const tickets = () => database().from('inbox_tickets').where('id', ticket.id)
 
-    try {
-      assert.throws(
-        () =>
-          db.prepare("UPDATE inbox_tickets SET status = 'in_progress' WHERE id = ?").run(ticket.id),
-        /CHECK constraint failed: inbox_tickets_assignee/,
-      )
-      assert.throws(
-        () => db.prepare("UPDATE inbox_tickets SET status = 'closed' WHERE id = ?").run(ticket.id),
-        /CHECK constraint failed: inbox_tickets_open/,
-      )
-      assert.throws(
-        () =>
-          db
-            .prepare(
-              "INSERT INTO inbox_attendants (kind, user_id, bot_key, created_at) VALUES ('human', ?, 'triage-twin', '2026-01-05 10:00:00')",
-            )
-            .run(ana.userId + 1_000_000),
-        /CHECK constraint failed: inbox_attendants_identity/,
-      )
-    } finally {
-      db.close()
-    }
+    await assert.rejects(
+      () => tickets().update({ status: 'in_progress' }),
+      /check constraint.*inbox_tickets_assignee/i,
+    )
+    await assert.rejects(
+      () => tickets().update({ status: 'closed' }),
+      /check constraint.*inbox_tickets_open/i,
+    )
+    await assert.rejects(
+      () =>
+        database()
+          .table('inbox_attendants')
+          .insert({
+            kind: 'human',
+            user_id: ana.userId + 1_000_000,
+            bot_key: 'triage-twin',
+            created_at: '2026-01-05 10:00:00',
+          }),
+      /check constraint.*inbox_attendants_identity/i,
+    )
 
-    assert.equal(rowOf(ticket)?.status, 'queued')
+    assert.equal((await rowOf(ticket))?.status, 'queued')
   })
 })

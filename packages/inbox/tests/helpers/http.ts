@@ -2,12 +2,13 @@ import { execFile, spawn } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { once } from 'node:events'
 import { createServer, type AddressInfo } from 'node:net'
-import { DatabaseSync } from 'node:sqlite'
 import { setTimeout as sleep } from 'node:timers/promises'
-import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
 
+import type { Database } from '@adonisjs/lucid/database'
 import type { Group } from '@japa/runner/core'
+
+import { playgroundDatabase } from './app.ts'
 
 const playground = new URL('../../../../playground/', import.meta.url)
 const run = promisify(execFile)
@@ -74,15 +75,16 @@ async function startPlayground() {
   throw new Error('the playground did not start in 30s')
 }
 
+let baseUrl: string
+let db: Database
+
 /**
- * The playground's own database file, for reading the rows a request wrote and for writing rows
- * no request would.
+ * The playground's database, for reading the rows a request wrote and for writing rows no
+ * request would.
  */
 export function database() {
-  return new DatabaseSync(fileURLToPath(new URL('tmp/db.sqlite3', playground)), { timeout: 5000 })
+  return db
 }
-
-let baseUrl: string
 
 export function playgroundUrl(path = '') {
   return `${baseUrl}${path}`
@@ -159,10 +161,15 @@ export function servePlayground(group: Group) {
     await run('node', ['ace', 'migration:run', '--force', '--no-schema-generate'], {
       cwd: playground,
     })
+    const local = await playgroundDatabase()
     const server = await startPlayground()
     baseUrl = server.baseUrl
+    db = local.db
 
-    return server.stop
+    return async () => {
+      server.stop()
+      await local.close()
+    }
   })
 }
 

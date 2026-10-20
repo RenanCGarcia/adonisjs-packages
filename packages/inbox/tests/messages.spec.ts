@@ -31,14 +31,33 @@ interface Queued {
 
 type Value = string | number | null
 
-function select(sql: string, ...params: Value[]) {
-  const db = database()
+/**
+ * The columns these specs read back, each present when its query selects it.
+ */
+interface Row {
+  id?: number
+  name?: string | null
+  status?: string | null
+  queue_id?: number
+  unread_count?: number
+  data?: string
+  actor_kind?: string
+  actor_source?: string | null
+  note?: string | null
+  direction?: string
+  kind?: string
+  body?: string
+  external_id?: string | null
+  author_id?: number | null
+  client_ref?: string | null
+  dispatched_at?: Date | string | null
+}
 
-  try {
-    return db.prepare(sql).all(...params)
-  } finally {
-    db.close()
-  }
+async function select(sql: string, ...params: Value[]): Promise<Row[]> {
+  const result = await database().rawQuery(sql, params)
+
+  // pg answers a raw query with the driver's result, sqlite with the rows.
+  return Array.isArray(result) ? result : result.rows
 }
 
 async function channelIn(admin: Agent, queueId: number, provider = 'fake') {
@@ -80,7 +99,7 @@ async function inboundTicket(admin: Agent, ...members: Agent[]) {
 
   await webhook(channel, [received(address)])
 
-  const [row] = select(
+  const [row] = await select(
     `SELECT inbox_tickets.id FROM inbox_tickets
      JOIN inbox_conversations ON inbox_conversations.id = inbox_tickets.conversation_id
      WHERE inbox_conversations.channel_id = ?`,
@@ -90,7 +109,7 @@ async function inboundTicket(admin: Agent, ...members: Agent[]) {
   return { channel, address, queueId, ticketId: Number(row?.id) }
 }
 
-function messagesOf(ticketId: number) {
+async function messagesOf(ticketId: number) {
   return select(
     'SELECT direction, kind, body, status, external_id, author_id, client_ref, dispatched_at FROM inbox_messages WHERE ticket_id = ? ORDER BY id',
     ticketId,
@@ -111,13 +130,13 @@ test.group('messages over HTTP', group => {
 
     assert.equal(await webhook(channel, [event]), 200)
 
-    const contacts = select(
+    const contacts = await select(
       'SELECT id, name FROM inbox_contacts WHERE channel_id = ? AND address = ?',
       channel.id,
       address,
     )
 
-    const tickets = select(
+    const tickets = await select(
       `SELECT inbox_tickets.id, status, queue_id, unread_count FROM inbox_tickets
        JOIN inbox_conversations ON inbox_conversations.id = inbox_tickets.conversation_id
        WHERE inbox_conversations.contact_id = ?`,
@@ -133,7 +152,7 @@ test.group('messages over HTTP', group => {
     assert.deepEqual(tickets, [
       { id: ticketId, status: 'queued', queue_id: queueId, unread_count: 1 },
     ])
-    assert.deepEqual(messagesOf(ticketId), [
+    assert.deepEqual(await messagesOf(ticketId), [
       {
         direction: 'inbound',
         kind: 'text',
@@ -146,14 +165,16 @@ test.group('messages over HTTP', group => {
       },
     ])
     assert.deepEqual(
-      select(
-        'SELECT data, actor_source FROM inbox_ticket_events WHERE ticket_id = ?',
-        ticketId,
+      (
+        await select(
+          'SELECT data, actor_source FROM inbox_ticket_events WHERE ticket_id = ?',
+          ticketId,
+        )
       ).map(row => ({ data: JSON.parse(String(row.data)), actor_source: row.actor_source })),
       [{ data: { fact: 'opened', queueId, origin: 'inbound' }, actor_source: 'ingest' }],
     )
     assert.lengthOf(
-      select(
+      await select(
         'SELECT id FROM inbox_channel_events WHERE channel_id = ? AND processed_at IS NOT NULL',
         channel.id,
       ),
@@ -168,7 +189,7 @@ test.group('messages over HTTP', group => {
 
     assert.deepEqual([await webhook(channel, [event]), await webhook(channel, [event])], [200, 200])
 
-    const tickets = select(
+    const tickets = await select(
       `SELECT inbox_tickets.id, unread_count FROM inbox_tickets
        JOIN inbox_conversations ON inbox_conversations.id = inbox_tickets.conversation_id
        WHERE inbox_conversations.channel_id = ?`,
@@ -177,7 +198,7 @@ test.group('messages over HTTP', group => {
 
     assert.lengthOf(tickets, 1)
     assert.equal(tickets[0]?.unread_count, 1)
-    assert.lengthOf(messagesOf(Number(tickets[0]?.id)), 1)
+    assert.lengthOf(await messagesOf(Number(tickets[0]?.id)), 1)
   })
 
   test('a webhook with the wrong secret or token is refused and stored nowhere', async ({
@@ -192,7 +213,7 @@ test.group('messages over HTTP', group => {
 
     assert.deepEqual([forged, unknown], [401, 404])
     assert.lengthOf(
-      select('SELECT id FROM inbox_channel_events WHERE channel_id = ?', channel.id),
+      await select('SELECT id FROM inbox_channel_events WHERE channel_id = ?', channel.id),
       0,
     )
   })
@@ -202,7 +223,7 @@ test.group('messages over HTTP', group => {
     const { ticketId } = await inboundTicket(ana, ana)
 
     const reply = await ana.post<Queued>(`/inbox/tickets/${ticketId}/messages`, { text: 'On it!' })
-    const [inbound, outbound] = messagesOf(ticketId)
+    const [inbound, outbound] = await messagesOf(ticketId)
 
     assert.equal(reply.status, 201)
     assert.equal(reply.outcome, 'queued')
@@ -216,11 +237,13 @@ test.group('messages over HTTP', group => {
       status: 'sent',
     })
     assert.isString(outbound?.external_id)
-    assert.isString(outbound?.dispatched_at)
+    assert.isNotNull(outbound?.dispatched_at)
     assert.deepEqual(
-      select(
-        "SELECT data FROM inbox_ticket_events WHERE ticket_id = ? AND type = 'assignment_changed'",
-        ticketId,
+      (
+        await select(
+          "SELECT data FROM inbox_ticket_events WHERE ticket_id = ? AND type = 'assignment_changed'",
+          ticketId,
+        )
       ).map(row => JSON.parse(String(row.data)).via),
       ['reply'],
     )
@@ -238,7 +261,7 @@ test.group('messages over HTTP', group => {
 
     assert.deepEqual([reply.status, reply.reason], [409, 'not_assignee'])
     assert.deepEqual(
-      messagesOf(ticketId).map(message => message.direction),
+      (await messagesOf(ticketId)).map(message => message.direction),
       ['inbound'],
     )
   })
@@ -254,7 +277,7 @@ test.group('messages over HTTP', group => {
 
     assert.equal(retry.outcome, 'queued')
     assert.equal(retry.messageId, first.messageId)
-    assert.lengthOf(select('SELECT id FROM inbox_messages WHERE client_ref = ?', key), 1)
+    assert.lengthOf(await select('SELECT id FROM inbox_messages WHERE client_ref = ?', key), 1)
   })
 
   test('statuses arriving out of order never move a message back', async ({ assert }) => {
@@ -262,7 +285,11 @@ test.group('messages over HTTP', group => {
     const { channel, ticketId } = await inboundTicket(ana, ana)
     const reply = await ana.post<Queued>(`/inbox/tickets/${ticketId}/messages`, { text: 'Hi' })
 
-    const [sent] = select('SELECT external_id FROM inbox_messages WHERE id = ?', reply.messageId)
+    const [sent] = await select(
+      'SELECT external_id FROM inbox_messages WHERE id = ?',
+      reply.messageId,
+    )
+
     const externalId = String(sent?.external_id)
 
     const status = (to: 'delivered' | 'read'): NormalizedEvent => ({
@@ -274,7 +301,10 @@ test.group('messages over HTTP', group => {
     await webhook(channel, [status('read')])
     await webhook(channel, [status('delivered')])
 
-    const [message] = select('SELECT status FROM inbox_messages WHERE id = ?', reply.messageId)
+    const [message] = await select(
+      'SELECT status FROM inbox_messages WHERE id = ?',
+      reply.messageId,
+    )
 
     assert.equal(message?.status, 'read')
   })
@@ -285,7 +315,11 @@ test.group('messages over HTTP', group => {
     const ana = await agent()
     const { channel, address, ticketId } = await inboundTicket(ana, ana)
     const reply = await ana.post<Queued>(`/inbox/tickets/${ticketId}/messages`, { text: 'Hi' })
-    const [sent] = select('SELECT external_id FROM inbox_messages WHERE id = ?', reply.messageId)
+
+    const [sent] = await select(
+      'SELECT external_id FROM inbox_messages WHERE id = ?',
+      reply.messageId,
+    )
 
     const echo = (externalId: string, text: string): NormalizedEvent => ({
       type: 'message_echoed',
@@ -301,7 +335,11 @@ test.group('messages over HTTP', group => {
     ])
 
     assert.deepEqual(
-      messagesOf(ticketId).map(message => [message.direction, message.body, message.status]),
+      (await messagesOf(ticketId)).map(message => [
+        message.direction,
+        message.body,
+        message.status,
+      ]),
       [
         ['inbound', 'hello', null],
         ['outbound', 'Hi', 'sent'],
@@ -316,12 +354,15 @@ test.group('messages over HTTP', group => {
     const admin = await agent()
     const channel = await channelIn(admin, await queue(admin), 'triage')
     const address = `+55${randomUUID()}`
-    const replies = () => messagesOf(ticketId).filter(message => message.direction === 'outbound')
-    const sent = () => replies().filter(message => message.status === 'sent').length
+
+    const replies = async () =>
+      (await messagesOf(ticketId)).filter(message => message.direction === 'outbound')
+
+    const sent = async () => (await replies()).filter(message => message.status === 'sent').length
 
     await webhook(channel, [received(address)])
 
-    const [row] = select(
+    const [row] = await select(
       `SELECT inbox_tickets.id FROM inbox_tickets
        JOIN inbox_conversations ON inbox_conversations.id = inbox_tickets.conversation_id
        WHERE inbox_conversations.channel_id = ?`,
@@ -330,7 +371,7 @@ test.group('messages over HTTP', group => {
 
     const ticketId = Number(row?.id)
 
-    await eventually(() => sent() === 1, 5000)
+    await eventually(async () => (await sent()) === 1, 5000)
     await webhook(channel, [
       {
         type: 'message_received',
@@ -340,18 +381,18 @@ test.group('messages over HTTP', group => {
         sentAt: DateTime.now(),
       },
     ])
-    await eventually(() => sent() === 2, 5000)
+    await eventually(async () => (await sent()) === 2, 5000)
 
-    const [ticket] = select('SELECT status FROM inbox_tickets WHERE id = ?', ticketId)
+    const [ticket] = await select('SELECT status FROM inbox_tickets WHERE id = ?', ticketId)
 
-    const handoffs = select(
+    const handoffs = await select(
       `SELECT actor_kind, actor_source, note FROM inbox_ticket_events
        WHERE ticket_id = ? AND type = 'assignment_changed' ORDER BY id`,
       ticketId,
     )
 
     assert.deepEqual(
-      replies().map(message => [message.body, message.status]),
+      (await replies()).map(message => [message.body, message.status]),
       [
         ['Hi! What do you need help with?', 'sent'],
         ['Thanks! Someone from the team will take it from here.', 'sent'],
