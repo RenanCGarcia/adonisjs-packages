@@ -2,9 +2,9 @@
 
 A helpdesk inbox runtime for AdonisJS 7. Contacts write in through channels, their messages land in conversations, and each stretch of attendance is a ticket that moves between queues and attendants. Attendants are humans or bots, and both are rows in one table.
 
-Your app owns every model file and every table. The package owns the ticket rules and talks to you through one service, `inbox`.
+Your app owns every model file and every table. The package owns the runtime: the ticket state machine, webhook ingest with dedupe, the outbound outbox, bot turns and automations. You talk to it through one service, `inbox`.
 
-> v1 is in progress. Tickets, attendants, queues, channels, webhook ingest and sending messages work. Bots and automations are not there yet.
+There is no UI, tenancy, CRM or concrete provider in here. You get extension points instead: `authorize`, `ownership`, `contactKey`, bots, automations and channel adapters.
 
 ## Install
 
@@ -15,18 +15,24 @@ node ace migration:run
 
 `configure` never overwrites a file you already have. It:
 
-- registers `@enzopita/adonisjs-inbox/inbox_provider` in `adonisrc.ts`;
+- registers `@enzopita/adonisjs-inbox/inbox_provider` and the `@enzopita/adonisjs-inbox/commands` ace commands in `adonisrc.ts`;
 - writes `config/inbox.ts`;
 - writes one migration, `database/migrations/<timestamp>_create_inbox_tables.ts`, with the `inbox_*` tables inline, so you can add your own columns (a `tenant_id`, say) before you run it;
 - writes ten models under `app/models/inbox/`, each `compose(InboxXSchema, withInboxX())` with its relations declared.
 
-`migration:run` creates the tables and regenerates `database/schema.ts`, which the models extend.
+`migration:run` creates the tables and regenerates `database/schema.ts`, which the models extend. Then schedule `node ace inbox:tick` every minute, from cron or a scheduler (see [Tick and recovery](#tick-and-recovery)).
 
 ## Config
 
 ```ts
 // config/inbox.ts
-import { adapters, defineConfig, tasks, type InferBots } from '@enzopita/adonisjs-inbox'
+import {
+  adapters,
+  automations,
+  defineConfig,
+  tasks,
+  type InferBots,
+} from '@enzopita/adonisjs-inbox'
 
 const inboxConfig = defineConfig({
   models: {
@@ -35,7 +41,14 @@ const inboxConfig = defineConfig({
     ticketEvent: () => import('#models/inbox/ticket_event'),
   },
 
-  bots: ['triage'],
+  bots: {
+    triage: () => import('#bots/triage_bot'),
+  },
+
+  automations: [
+    automations.assignOnOpen({ bot: 'triage', when: ({ now }) => now.hour >= 18 }),
+    automations.closeInactive({ after: { hours: 48 } }),
+  ],
 
   // Keyed by the provider column of your channels
   channels: { fake: adapters.fake() },
@@ -58,10 +71,11 @@ declare module '@enzopita/adonisjs-inbox/types' {
 ```
 
 - `models` has one slot per role in `MODEL_ROLES`. Leaving one out, or pointing it at a model without its role's mixin, fails to compile. A JavaScript config fails the boot instead.
-- `bots` lists the bot keys. With the `InboxBots` augmentation, `inbox.attendants.bot('nope')` fails to compile.
+- `bots` maps each bot key to a lazily imported class implementing `Bot`. The keys type the automations, so `automations.assignOnOpen({ bot: 'nope' })` fails to compile, and with the `InboxBots` augmentation so does `inbox.attendants.bot('nope')`.
+- `automations` run in order on their trigger. See [Automations](#automations).
 - `channels` maps each provider to its adapter.
-- `tasks` runs the work after a commit, ingesting a webhook or dispatching a message. `tasks.inline()` runs it in the process. `tasks.queue({ job })` hands it to an `@adonisjs/queue` job whose `execute` calls `inbox.run(this.payload)`.
-- `authorize` runs against the freshly read ticket on every attempt of `inbox.tickets.apply`, and of `inbox.messages.send` with the operation `{ gesture: 'send' }`. The releases the package does itself skip it.
+- `tasks` runs the work after a commit: ingesting a webhook, dispatching a message and running a bot turn. `tasks.inline()` runs it in the process, and a delayed task (a retry, a bot's debounce) waits on a timer that a restart loses. `tasks.queue({ job })` hands it to an `@adonisjs/queue` job whose `execute` calls `inbox.run(this.payload)`.
+- `authorize` runs against the freshly read ticket on every attempt of `inbox.tickets.apply`, and of `inbox.messages.send` with the operation `{ gesture: 'send' }`. Bots, automations and the releases the package does itself skip it, since they are your own code or the package's housekeeping.
 - `ownership` fills your own columns through `Model.create`, so your model hooks still run.
 
 ## Models
@@ -95,7 +109,8 @@ if (result.outcome === 'rejected') return response.conflict({ reason: result.rea
 | `queues.removeMember(queueId, attendant)`      | Removes it and returns the attendant's tickets in that queue                                                    |
 | `messages.send(id, content, author, options)`  | Replies on the ticket. Returns `queued` with the message id, or `rejected` with a reason                        |
 | `ingest(token, request)`                       | The webhook entry. Returns `accepted`, `unknown_channel` or `invalid_signature`                                 |
-| `recover()`                                    | Queues again webhooks and sends whose task was lost, such as after a restart. Run it periodically               |
+| `tick(now?)`                                   | Runs the tick automations, then `recover()`. `node ace inbox:tick` calls it                                     |
+| `recover()`                                    | Queues again webhooks and sends whose task was lost, and gives up on the ones older than a day                  |
 
 There are no locks. `apply` reads the ticket, plans the gesture with the pure `plan` function and writes it with a compare-and-swap on `version`. When another write landed in between, it reads and plans again, up to three times, and then gives up with `conflict`. A unique index on the open conversation keeps one open ticket per conversation. This works the same on sqlite, pg and mysql.
 
@@ -109,7 +124,116 @@ A channel adapter implements `ChannelAdapter`: `verify` and `parse` a webhook, a
 
 `messages.send` writes the message pending in the same compare-and-swap as the ticket, so a human replying to a queued ticket assumes it, and a reply to a ticket another human holds is rejected. After the commit a dispatch claims the message with a lease and sends it once. A retry with the same `clientRef` returns the message the first call stored.
 
+Ingest writes an inbound message as the system actor `ingest`. A ticket it opens runs the `ticket_opened` automations in the opening transaction, and the message runs the `message_received` ones in its own write.
+
 `@enzopita/adonisjs-inbox/testing` exports `FakeChannelAdapter`, `fakeWebhookBody` and `channelAdapterContract`, the Japa suite every adapter should pass.
+
+## Bots
+
+A bot is an attendant whose turns the package runs. It implements `Bot`, and the container makes it once, so `@inject()` works:
+
+```ts
+// app/bots/triage_bot.ts
+import { inject } from '@adonisjs/core'
+import { Logger } from '@adonisjs/core/logger'
+import type { Bot, BotReply, BotTurn } from '@enzopita/adonisjs-inbox'
+
+// A type alias, not an interface, so it is assignable to JsonValue
+type TriageState = { greeted: boolean }
+
+@inject()
+export default class TriageBot implements Bot<TriageState> {
+  debounce = { seconds: 1 }
+
+  constructor(protected logger: Logger) {}
+
+  initialState(): TriageState {
+    return { greeted: false }
+  }
+
+  async turn({ state, unanswered }: BotTurn<TriageState>): Promise<BotReply<TriageState>> {
+    if (!state.greeted) {
+      return {
+        kind: 'reply',
+        messages: [{ kind: 'text', text: 'Hi! What do you need help with?' }],
+        state: { greeted: true },
+      }
+    }
+
+    return {
+      kind: 'reply',
+      messages: [{ kind: 'text', text: 'Thanks! Someone from the team will take it from here.' }],
+      state,
+      handoff: {
+        gesture: 'return',
+        note: unanswered.map(({ content }) => content.text).join('\n'),
+      },
+    }
+  }
+}
+```
+
+You never call a bot. A ticket reaches it through `{ gesture: 'assign', to: bot.id }`, where `bot = await inbox.attendants.bot('triage')`, or through an automation. From then on the package runs a turn:
+
+- after each inbound message on a ticket the bot holds, once `debounce` passed without a newer message, with `trigger: 'message'`;
+- when the bot gets the ticket from a human or an automation, with `trigger: 'assigned'`. A bot handing the ticket to another bot leaves that one to the next message, so two bots never pass a ticket back and forth.
+
+`unanswered` holds the inbound messages since the last reply by an attendant, human or bot. A turn answers with one of:
+
+| Reply                                          | Does                                                                                     |
+| ---------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| `{ kind: 'reply', messages, state, handoff? }` | Sends the messages, stores the state, then `return`s, `transfer`s or `close`s the ticket |
+| `{ kind: 'silent', state }`                    | Stores the state only. The messages stay unanswered for the next turn                    |
+| `{ kind: 'wait', retryIn }`                    | Runs the turn again after `retryIn`, such as while a file is still processing            |
+
+`turn` runs outside any transaction, so a slow model call holds no lock. The replies, the state and the handoff then commit in one write, guarded by the ticket version the turn read:
+
+- When a human took the ticket meanwhile, the turn is dropped and nothing is sent.
+- When a message arrived meanwhile, the turn runs again with the longer batch, three times at most, and then commits its last answer over the latest version.
+- A committed turn never runs again, and a turn delivered twice finds nothing to do, so a reply goes out once.
+- A turn that throws is retried with backoff, four attempts in all, and a `wait` uses one of them.
+
+The bot's state is kept per bot attendant on the ticket, so a bot that gets the ticket back resumes where it left off. A human takes it back at any time with `{ gesture: 'assume' }`, or by replying.
+
+## Automations
+
+An automation returns effects as data, and the package applies them through the ticket state machine, as the system actor named after the automation. An effect is `{ effect: 'apply', gesture }`, `{ effect: 'assign_bot', bot }` or `{ effect: 'send', content }`. A send is stored pending with no author and dispatched like any message. It doesn't count as a reply, so a bot still answers the message it followed.
+
+| Built-in                                | Trigger            | Does                                                              |
+| --------------------------------------- | ------------------ | ----------------------------------------------------------------- |
+| `assignOnOpen({ bot, when? })`          | `ticket_opened`    | Opens the ticket already assigned to the bot                      |
+| `assignQueuedOnMessage({ bot, when })`  | `message_received` | Hands a queued ticket to the bot when a message arrives           |
+| `autoReply({ text \| content, when? })` | `ticket_opened`    | Sends a message on every ticket that opens                        |
+| `closeInactive({ after, reason? })`     | `tick`             | Closes open tickets with no activity for `after`, as `inactivity` |
+
+Your own automation has the same shape:
+
+```ts
+import { defineAutomation } from '@enzopita/adonisjs-inbox'
+
+export const closeAbandonedQueued = defineAutomation({
+  name: 'close_abandoned_queued',
+  on: 'tick',
+  candidates: ({ now }) => ({ status: 'queued', lastActivityBefore: now.minus({ days: 7 }) }),
+  decide: ({ ticket, now }) =>
+    ticket.lastActivityAt < now.minus({ days: 7 })
+      ? [{ effect: 'apply', gesture: { gesture: 'close', reason: 'inactivity' } }]
+      : [],
+})
+```
+
+- `ticket_opened` and `message_received` automations run on the ticket their trigger leaves, and their effects land in the trigger's own write. A ticket `assignOnOpen` assigns is never seen queued. `message_received` runs on inbound messages only.
+- `tick` automations run from `inbox.tick()`. `candidates` returns plain column comparisons (`status`, `lastActivityBefore`, `queueId`, `assigneeKind`), with `status` defaulting to open tickets. `decide` runs again on each fresh read of every candidate, and its effects land in one compare-and-swap, so running a tick twice changes nothing twice. A tick automation that only sends sends on every tick, so pair a send with a change.
+- Each automation sees the ticket the ones before it left. One whose effects the state machine rejects is skipped and logged, and the others still apply.
+- Effects never trigger automations, so automations can't loop through each other.
+
+## Tick and recovery
+
+```sh
+node ace inbox:tick
+```
+
+Run it every minute. It calls `inbox.tick()`, which runs the tick automations and then `inbox.recover()`. `recover` queues again the stored webhooks no ingest processed and the pending messages no dispatch owns, once they are older than a dispatch lease (`DISPATCH_LEASE_MS`), newest first and `RECOVER_BATCH` of each per run. Work older than `GIVE_UP_AFTER_MS`, a day, is marked failed instead: a webhook gets `failed_at`, and a message gets status `failed` with the failure code `expired`. So work that keeps failing stops being retried, and you can find it by those markers.
 
 ## Pure parts
 
