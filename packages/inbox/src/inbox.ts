@@ -3,10 +3,12 @@ import { randomUUID } from 'node:crypto'
 import type { EmitterService, LoggerService } from '@adonisjs/core/types'
 import type { Database } from '@adonisjs/lucid/database'
 import type { TransactionClientContract } from '@adonisjs/lucid/types/database'
-import { DateTime } from 'luxon'
+import { DateTime, Duration } from 'luxon'
 
 import type { ContactIdentity, NormalizedEvent, WebhookRequest } from './adapters/port.ts'
+import type { Automation, Effect } from './automations.ts'
 import type { AuthorizeQuestion, ResolvedInboxConfig } from './define_config.ts'
+import type { InboundMessage } from './bots.ts'
 import { InboxError } from './errors.ts'
 import { dispatchMessage, whereClaimable, whereInFlight } from './internal/outbox.ts'
 import {
@@ -21,7 +23,13 @@ import {
 import { toContentColumns } from './message/content.ts'
 import { advanceableFrom } from './message/status.ts'
 import type { InboxModelOf } from './mixins/main.ts'
-import { DISPATCH_LEASE_MS, retryOf, type InboxTask, type TaskDriver } from './tasks.ts'
+import {
+  DISPATCH_LEASE_MS,
+  retryOf,
+  type BotTrigger,
+  type InboxTask,
+  type TaskDriver,
+} from './tasks.ts'
 import {
   holder,
   planChange,
@@ -46,6 +54,7 @@ import type {
   MessageId,
   MessageStatus,
   QueueId,
+  Rejection,
   SendMessageOptions,
   SendOutcome,
   TicketFact,
@@ -65,6 +74,12 @@ const ATTEMPTS = 3
 const INGEST: Actor = { kind: 'system', source: 'ingest' }
 
 /**
+ * How many times a bot turn runs again on a batch that grew while it ran, before it commits its
+ * last answer over whatever the ticket became.
+ */
+const BOT_RERUNS = 3
+
+/**
  * What a plan relied on that another writer could change before the write lands.
  */
 interface Reliance {
@@ -72,12 +87,51 @@ interface Reliance {
   activeAttendants: AttendantId[]
 }
 
+/**
+ * One change, planned on the ticket as the change before it left it.
+ */
+interface Step {
+  change: TicketChange
+  actor: Actor
+  from: TicketSnapshot
+  next: TicketSnapshot
+  facts: TicketFact[]
+}
+
+interface Planned {
+  outcome: 'planned'
+  /**
+   * The actor as it is now, read again from its row.
+   */
+  actor: Actor
+  next: TicketSnapshot
+  steps: Step[]
+  reliance: Reliance
+  /**
+   * Messages automations send in the write.
+   */
+  sends: Array<{ channel: ChannelRow; content: MessageContent }>
+}
+
+type PlanOutcome = Planned | { outcome: 'rejected'; reason: Rejection; actor: Actor }
+
 interface TicketWrite {
-  decide: (ticket: TicketSnapshot) => TicketChange | null
+  /**
+   * The changes, in order, on the ticket as this attempt read it. None leaves it unchanged.
+   */
+  decide: (ticket: TicketSnapshot) => TicketChange[]
   /**
    * Asks `config.authorize` about this operation on every attempt.
    */
   authorizeAs?: AuthorizeQuestion['operation']
+  /**
+   * Run on the ticket the changes leave, so their effects land in this same write.
+   */
+  automations?: { list: ReadonlyArray<Automation<string>>; now: DateTime }
+  /**
+   * Writes over this version only, in one attempt, and comes back `conflict` once it moved.
+   */
+  version?: number
   /**
    * More writes that land, or roll back, with the ticket's. A ticket the change leaves unchanged
    * is still compared and swapped, so these never land on a ticket that moved.
@@ -87,12 +141,17 @@ interface TicketWrite {
 
 type ChannelRow = InstanceType<InboxModelOf<'channel'>>
 
+type BotTurnTask = Extract<InboxTask, { task: 'bot_turn' }>
+
+type BotAttendant = Extract<Attendant, { kind: 'bot' }>
+
 export class Inbox {
   readonly #config: ResolvedInboxConfig
   readonly #db: Database
   readonly #emitter: EmitterService
   readonly #logger: LoggerService
   readonly #tasks: TaskDriver
+  #bots: Promise<ReadonlyMap<string, BotAttendant>> | undefined
 
   constructor(
     config: ResolvedInboxConfig,
@@ -121,7 +180,7 @@ export class Inbox {
      * up to three times, running `authorize` and the membership rule against each fresh read.
      */
     apply: (id: TicketId, gesture: Gesture, actor: Actor): Promise<ApplyResult> =>
-      this.#write(id, actor, { decide: () => gesture, authorizeAs: gesture }),
+      this.#write(id, actor, { decide: () => [gesture], authorizeAs: gesture }),
 
     /**
      * Zeroes the unread count when `attendant` holds the ticket, and does nothing otherwise.
@@ -181,26 +240,16 @@ export class Inbox {
 
       try {
         result = await this.#write(id, author, {
-          decide: () => ({ gesture: 'reply', at: now }),
+          decide: () => [{ gesture: 'reply', at: now }],
           authorizeAs: { gesture: 'send' },
-          within: async (trx, ticket, later) => {
-            const row = await Message.create(
-              {
-                ...this.#config.ownership(channel),
-                conversationId: ticket.conversationId,
-                ticketId: ticket.id,
-                direction: 'outbound',
-                ...toContentColumns(content),
-                status: 'pending',
-                authorId: author.id,
-                clientRef,
-                sentAt: now,
-              },
-              { client: trx },
-            )
-
-            later(() => this.#enqueue({ task: 'dispatch', messageId: row.id, attempt: 0 }))
-          },
+          within: (trx, ticket, later) =>
+            this.#storePending(
+              trx,
+              ticket,
+              channel,
+              { content, authorId: author.id, clientRef },
+              later,
+            ),
         })
       } catch (error) {
         const winner = await stored()
@@ -236,20 +285,7 @@ export class Inbox {
     /**
      * The attendant row of a bot from `config.bots`, created on first use.
      */
-    bot: async (key: BotKey) => {
-      if (!this.#config.bots.has(key)) {
-        throw new InboxError('E_INBOX_UNKNOWN_BOT', `inbox: "${key}" is not in config.bots`)
-      }
-
-      const Attendant = await this.#config.model('attendant')
-
-      const row = await findOrCreate(
-        () => Attendant.findBy('botKey', key),
-        () => Attendant.create({ kind: 'bot', botKey: key }),
-      )
-
-      return row.asAttendant
-    },
+    bot: (key: BotKey): Promise<Attendant> => this.#botAttendant(key),
 
     /**
      * Marks the attendant inactive and returns every ticket it holds to its queue. An assume
@@ -370,6 +406,8 @@ export class Inbox {
           return await this.#ingestEvent(task.channelEventId)
         case 'dispatch':
           return await dispatchMessage(this.#config, this.#announce, task.messageId)
+        case 'bot_turn':
+          return await this.#botTurn(task)
         default: {
           const unhandled: never = task
 
@@ -406,6 +444,8 @@ export class Inbox {
     const conversation = await Conversation.findOrFail(conversationId)
     const channel = await Channel.findOrFail(conversation.channelId)
     const opening = planOpening(queueId, origin)
+    const automations = this.#automationsOn('ticket_opened')
+    const bots = automations.length === 0 ? new Map() : await this.#botDirectory()
     const now = DateTime.now()
 
     try {
@@ -441,7 +481,23 @@ export class Inbox {
           ),
         )
 
-        return { opened: true, ticket: row.snapshot }
+        const opened = row.snapshot
+
+        const planned = await this.#automate(unplanned(opened, actor), automations, {
+          channel,
+          now,
+          bots,
+          client: trx,
+        })
+
+        if (planned.steps.length > 0 || planned.sends.length > 0) {
+          await this.#commit(trx, row, planned, later)
+        }
+
+        // The inbound message that opened it follows, and its turn answers it.
+        if (origin === 'outbound') this.#turnOnHandover(opened, planned.next, actor, later)
+
+        return { opened: true, ticket: planned.next }
       })
     } catch (error) {
       const winner = await openIn()
@@ -454,66 +510,62 @@ export class Inbox {
 
   async #write(id: TicketId, actor: Actor, write: TicketWrite): Promise<ApplyResult> {
     const Ticket = await this.#config.model('ticket')
+    const automations = write.automations?.list ?? []
+    let channel: ChannelRow | undefined
 
-    for (let attempt = 0; attempt < ATTEMPTS; attempt++) {
+    for (let attempt = 0; attempt < (write.version === undefined ? ATTEMPTS : 1); attempt++) {
       const row = await Ticket.findOrFail(id)
       const ticket = row.snapshot
-      const change = write.decide(ticket)
 
-      if (change === null) return { outcome: 'unchanged', ticket }
+      if (write.version !== undefined && ticket.version !== write.version) break
 
-      const { context, current, reliance } = await this.#contextFor(ticket, change, actor)
+      const changes = write.decide(ticket)
+
+      if (changes.length === 0 && automations.length === 0) return { outcome: 'unchanged', ticket }
+
+      const plan = await this.#plan(ticket, actor, changes)
 
       const allowed =
         write.authorizeAs === undefined ||
-        (await this.#config.authorize({ actor: current, operation: write.authorizeAs, ticket }))
+        (await this.#config.authorize({ actor: plan.actor, operation: write.authorizeAs, ticket }))
 
       if (!allowed) return { outcome: 'rejected', reason: 'forbidden' }
 
-      const planned = planChange(ticket, change, current, context)
+      if (plan.outcome === 'rejected') return { outcome: 'rejected', reason: plan.reason }
 
-      if (planned.outcome === 'rejected') return planned
+      let planned = plan
 
-      if (planned.outcome === 'unchanged' && write.within === undefined) {
+      if (write.automations !== undefined && automations.length > 0) {
+        channel ??= await this.#channelOf(ticket.conversationId)
+
+        planned = await this.#automate(plan, automations, {
+          channel,
+          now: write.automations.now,
+          bots: await this.#botDirectory(),
+        })
+      }
+
+      if (planned.steps.length === 0 && planned.sends.length === 0 && write.within === undefined) {
         return { outcome: 'unchanged', ticket }
       }
 
-      const changed = planned.outcome === 'changed'
-      const next = changed ? planned.next : ticket
-      const facts = changed ? planned.facts : []
-
       try {
         await unitOfWork(this.#db, async (trx, later) => {
-          await this.#compareAndSwap(trx, row, next)
-          await this.#reassert(trx, reliance)
-          await this.#record(
-            trx,
-            ticket.id,
-            facts,
-            current,
-            'note' in change ? change.note : undefined,
-          )
-          await write.within?.(trx, next, later)
+          await this.#commit(trx, row, planned, later)
+          await write.within?.(trx, planned.next, later)
 
-          const name = change.gesture
-
-          if (!changed || name === 'inbound' || name === 'bot_state') return
-
-          later(() =>
-            this.#emit(() =>
-              this.#emitter.emit('inbox:ticket_changed', {
-                ticketId: ticket.id,
-                change: name,
-                from: ticket.state,
-                to: next.state,
-                facts,
-              }),
-            ),
-          )
+          // An inbound message schedules its own turn, which answers it.
+          if (!planned.steps.some(step => step.change.gesture === 'inbound')) {
+            this.#turnOnHandover(ticket, planned.next, actor, later)
+          }
         })
 
-        return changed
-          ? { outcome: 'changed', ticket: next, facts }
+        return planned.steps.length > 0
+          ? {
+              outcome: 'changed',
+              ticket: planned.next,
+              facts: planned.steps.flatMap(step => step.facts),
+            }
           : { outcome: 'unchanged', ticket }
       } catch (error) {
         if (!(error instanceof Conflict)) throw error
@@ -524,10 +576,203 @@ export class Inbox {
   }
 
   /**
+   * Plans `changes` in order, each on the ticket the one before it left, reading for each what
+   * `plan` can't read itself. A rejected change rejects them all.
+   */
+  async #plan(
+    ticket: TicketSnapshot,
+    actor: Actor,
+    changes: TicketChange[],
+    client?: TransactionClientContract,
+  ): Promise<PlanOutcome> {
+    const planned = unplanned(ticket, actor)
+
+    for (const change of changes) {
+      const { context, current, reliance } = await this.#contextFor(
+        planned.next,
+        change,
+        actor,
+        client,
+      )
+
+      const step = planChange(planned.next, change, current, context)
+
+      planned.actor = current
+
+      if (step.outcome === 'rejected') {
+        return { outcome: 'rejected', reason: step.reason, actor: current }
+      }
+
+      planned.reliance.memberships.push(...reliance.memberships)
+      planned.reliance.activeAttendants.push(...reliance.activeAttendants)
+
+      if (step.outcome === 'unchanged') continue
+
+      planned.steps.push({
+        change,
+        actor: current,
+        from: planned.next,
+        next: step.next,
+        facts: step.facts,
+      })
+      planned.next = step.next
+    }
+
+    return planned
+  }
+
+  /**
+   * Adds the effects of each automation, decided on the ticket the plan so far leaves. An
+   * automation whose effects the state machine rejects is skipped, and the rest still apply.
+   */
+  async #automate(
+    planned: Planned,
+    automations: ReadonlyArray<Automation<string>>,
+    moment: {
+      channel: ChannelRow
+      now: DateTime
+      bots: ReadonlyMap<string, BotAttendant>
+      client?: TransactionClientContract
+    },
+  ): Promise<Planned> {
+    const { channel, now, bots, client } = moment
+
+    const result: Planned = {
+      ...planned,
+      steps: [...planned.steps],
+      reliance: {
+        memberships: [...planned.reliance.memberships],
+        activeAttendants: [...planned.reliance.activeAttendants],
+      },
+      sends: [...planned.sends],
+    }
+
+    for (const automation of automations) {
+      const effects = automation.decide({
+        ticket: result.next,
+        channel: { id: channel.id, provider: channel.provider },
+        now,
+      })
+
+      if (effects.length === 0) continue
+
+      const changes = effects.flatMap(effect => changeOf(effect, bots, automation.name))
+      const contents = effects.flatMap(effect => (effect.effect === 'send' ? [effect.content] : []))
+
+      const sendable = contents.filter(({ kind }) =>
+        this.#config.adapters.canSend(channel.provider, kind),
+      )
+
+      if (sendable.length < contents.length) {
+        this.#logger.warn(
+          { automation: automation.name, provider: channel.provider },
+          'inbox: an automation sent content its channel cannot send',
+        )
+      }
+
+      const system: Actor = { kind: 'system', source: automation.name }
+      const plan = await this.#plan(result.next, system, changes, client)
+
+      if (plan.outcome === 'rejected') {
+        this.#logger.warn(
+          { automation: automation.name, ticketId: result.next.id, reason: plan.reason },
+          'inbox: an automation was rejected, so it was skipped',
+        )
+
+        continue
+      }
+
+      result.next = plan.next
+      result.steps.push(...plan.steps)
+      result.reliance.memberships.push(...plan.reliance.memberships)
+      result.reliance.activeAttendants.push(...plan.reliance.activeAttendants)
+      result.sends.push(...sendable.map(content => ({ channel, content })))
+    }
+
+    return result
+  }
+
+  /**
+   * Swaps the ticket from the version `row` was read at to the planned one, and records and
+   * announces each step. A plan with no steps still swaps, so what lands with it never lands on a
+   * ticket that moved.
+   */
+  async #commit(
+    trx: TransactionClientContract,
+    row: InstanceType<InboxModelOf<'ticket'>>,
+    planned: Planned,
+    later: Later,
+  ) {
+    await this.#compareAndSwap(trx, row, planned.next)
+    await this.#reassert(trx, planned.reliance)
+
+    for (const step of planned.steps) {
+      const { change, from, next, facts } = step
+
+      await this.#record(trx, row.id, facts, step.actor, 'note' in change ? change.note : undefined)
+
+      const name = change.gesture
+
+      if (name === 'inbound' || name === 'bot_state') continue
+
+      later(() =>
+        this.#emit(() =>
+          this.#emitter.emit('inbox:ticket_changed', {
+            ticketId: row.id,
+            change: name,
+            from: from.state,
+            to: next.state,
+            facts,
+          }),
+        ),
+      )
+    }
+
+    for (const { channel, content } of planned.sends) {
+      await this.#storePending(trx, planned.next, channel, { content, authorId: null }, later)
+    }
+  }
+
+  /**
+   * Stores an outgoing message pending in the write, and dispatches it after the commit.
+   */
+  async #storePending(
+    trx: TransactionClientContract,
+    ticket: TicketSnapshot,
+    channel: ChannelRow,
+    message: { content: MessageContent; authorId: AttendantId | null; clientRef?: string },
+    later: Later,
+  ) {
+    const Message = await this.#config.model('message')
+
+    const row = await Message.create(
+      {
+        ...this.#config.ownership(channel),
+        conversationId: ticket.conversationId,
+        ticketId: ticket.id,
+        direction: 'outbound',
+        ...toContentColumns(message.content),
+        status: 'pending',
+        authorId: message.authorId,
+        clientRef: message.clientRef ?? randomUUID(),
+        sentAt: DateTime.now(),
+      },
+      { client: trx },
+    )
+
+    later(() => this.#enqueue({ task: 'dispatch', messageId: row.id, attempt: 0 }))
+  }
+
+  /**
    * Reads what `plan` can't: the actor and the target as they are now, and the memberships
    * `questionsFor` names.
    */
-  async #contextFor(ticket: TicketSnapshot, change: TicketChange, actor: Actor) {
+  async #contextFor(
+    ticket: TicketSnapshot,
+    change: TicketChange,
+    actor: Actor,
+    client?: TransactionClientContract,
+  ) {
     const Attendant = await this.#config.model('attendant')
     const QueueMember = await this.#config.model('queueMember')
 
@@ -538,7 +783,7 @@ export class Inbox {
       (attendantId): attendantId is AttendantId => attendantId !== undefined,
     )
 
-    const rows = ids.length === 0 ? [] : await Attendant.query().whereIn('id', ids)
+    const rows = ids.length === 0 ? [] : await Attendant.query({ client }).whereIn('id', ids)
     const attendants = new Map(rows.map(row => [row.id, row.asAttendant]))
 
     // A vanished attendant can't hold a ticket, which is what inactive means to `plan`.
@@ -551,7 +796,7 @@ export class Inbox {
     const members =
       questions.length === 0
         ? []
-        : await QueueMember.query().where(query => {
+        : await QueueMember.query({ client }).where(query => {
             for (const [attendantId, queueId] of questions) {
               query.orWhere(pair =>
                 pair.where('attendantId', attendantId).where('queueId', queueId),
@@ -672,7 +917,7 @@ export class Inbox {
             const stillHeld =
               current?.id === attendantId && (queueId === null || ticket.state.queueId === queueId)
 
-            return stillHeld ? { gesture: 'return' } : null
+            return stillHeld ? [{ gesture: 'return' }] : []
           },
         },
       )
@@ -758,7 +1003,8 @@ export class Inbox {
 
       try {
         result = await this.#write(ticket.id, INGEST, {
-          decide: () => ({ gesture: 'inbound', sentAt: event.sentAt }),
+          decide: () => [{ gesture: 'inbound', sentAt: event.sentAt }],
+          automations: { list: this.#automationsOn('message_received'), now: DateTime.now() },
           within: async (trx, current, later) => {
             const message = await Message.create(
               {
@@ -783,6 +1029,14 @@ export class Inbox {
                 }),
               ),
             )
+
+            const bot = holder(current.state)
+
+            if (bot?.kind === 'bot') {
+              later(() =>
+                this.#enqueueTurn(current.id, bot.id, { kind: 'message', messageId: message.id }),
+              )
+            }
           },
         })
       } catch (error) {
@@ -946,6 +1200,251 @@ export class Inbox {
     return { outcome: 'queued', messageId, ticket: ticket.snapshot }
   }
 
+  /**
+   * The attendant row of a bot from `config.bots`, created on first use.
+   */
+  async #botAttendant(key: string): Promise<BotAttendant> {
+    if (!this.#config.bots.has(key)) {
+      throw new InboxError('E_INBOX_UNKNOWN_BOT', `inbox: "${key}" is not in config.bots`)
+    }
+
+    const Attendant = await this.#config.model('attendant')
+
+    const row = await findOrCreate(
+      () => Attendant.findBy('botKey', key),
+      () => Attendant.create({ kind: 'bot', botKey: key }),
+    )
+
+    const attendant = row.asAttendant
+
+    if (attendant.kind !== 'bot') {
+      throw new InboxError(
+        'E_INBOX_INVALID_ROW',
+        `inbox: attendant ${row.id} has a bot key but is not a bot`,
+      )
+    }
+
+    return attendant
+  }
+
+  /**
+   * Every configured bot's attendant, by key. Read before a transaction that may assign one,
+   * since creating a row outside it would wait on the transaction's own lock.
+   */
+  #botDirectory() {
+    this.#bots ??= (async () => {
+      const directory = new Map<string, BotAttendant>()
+
+      for (const key of this.#config.bots.keys()) {
+        directory.set(key, await this.#botAttendant(key))
+      }
+
+      return directory
+    })().catch(error => {
+      this.#bots = undefined
+      throw error
+    })
+
+    return this.#bots
+  }
+
+  async #botOf(botId: AttendantId) {
+    for (const [key, attendant] of await this.#botDirectory()) {
+      const make = this.#config.bots.get(key)
+
+      if (attendant.id === botId && make !== undefined) return { attendant, bot: await make() }
+    }
+
+    return null
+  }
+
+  #automationsOn(trigger: 'ticket_opened' | 'message_received') {
+    return this.#config.automations.filter(automation => automation.on === trigger)
+  }
+
+  /**
+   * Runs a turn for the bot a write handed the ticket to. A bot that hands it to another bot
+   * leaves that one to the next message, so two bots never pass a ticket back and forth.
+   */
+  #turnOnHandover(from: TicketSnapshot, to: TicketSnapshot, actor: Actor, later: Later) {
+    const bot = holder(to.state)
+
+    if (bot?.kind !== 'bot' || actor.kind === 'bot' || holder(from.state)?.id === bot.id) return
+
+    later(() => this.#enqueueTurn(to.id, bot.id, { kind: 'assigned', version: to.version }))
+  }
+
+  async #enqueueTurn(ticketId: TicketId, botId: AttendantId, trigger: BotTrigger) {
+    const found = await this.#botOf(botId)
+
+    if (found === null) return
+
+    const debounce = trigger.kind === 'assigned' ? 0 : (found.bot.debounce ?? 0)
+
+    await this.#tasks.enqueue(
+      { task: 'bot_turn', ticketId, botId, trigger, attempt: 0 },
+      Duration.fromDurationLike(debounce).toMillis(),
+    )
+  }
+
+  /**
+   * Reads the ticket and its unanswered messages, asks the bot outside any transaction, and
+   * commits the answer guarded by the version it read. A turn whose bot lost the ticket meanwhile
+   * is dropped. One whose batch grew runs again, and after `BOT_RERUNS` commits over the latest
+   * version. Once committed it never runs again, so its replies go out at most once.
+   */
+  async #botTurn(task: BotTurnTask) {
+    const found = await this.#botOf(task.botId)
+
+    if (found === null) return
+
+    const { attendant, bot } = found
+    const Ticket = await this.#config.model('ticket')
+    let channel: ChannelRow | undefined
+    let committed = false
+
+    try {
+      for (let run = 0; run <= BOT_RERUNS; run++) {
+        const ticket = (await Ticket.findOrFail(task.ticketId)).snapshot
+
+        if (holder(ticket.state)?.id !== attendant.id) return
+
+        const unanswered = await this.#unanswered(ticket.id)
+
+        if (run === 0 && !this.#turnIsDue(task.trigger, ticket, unanswered)) return
+
+        const stored = ticket.botState[attendant.id]
+        const now = DateTime.now()
+
+        const reply = await bot.turn({
+          trigger: task.trigger.kind,
+          ticket,
+          unanswered,
+          state: stored === undefined ? bot.initialState() : stored,
+          now,
+        })
+
+        if (reply.kind === 'wait') {
+          return await this.#retry(task, Duration.fromDurationLike(reply.retryIn).toMillis())
+        }
+
+        channel ??= await this.#channelOf(ticket.conversationId)
+
+        const { provider } = channel
+        const messages = reply.kind === 'reply' ? reply.messages : []
+
+        const sendable = messages.filter(({ kind }) =>
+          this.#config.adapters.canSend(provider, kind),
+        )
+
+        if (sendable.length < messages.length) {
+          this.#logger.warn(
+            { task, provider },
+            'inbox: a bot replied with content its channel cannot send',
+          )
+        }
+
+        const changes: TicketChange[] = [{ gesture: 'bot_state', state: reply.state }]
+
+        if (sendable.length > 0) changes.push({ gesture: 'reply', at: now })
+
+        if (reply.kind === 'reply' && reply.handoff !== undefined) changes.push(reply.handoff)
+
+        const replyChannel = channel
+
+        const result = await this.#write(ticket.id, attendant, {
+          version: run < BOT_RERUNS ? ticket.version : undefined,
+          decide: () => changes,
+          within: async (trx, next, later) => {
+            later(async () => {
+              committed = true
+            })
+
+            for (const content of sendable) {
+              await this.#storePending(
+                trx,
+                next,
+                replyChannel,
+                { content, authorId: attendant.id },
+                later,
+              )
+            }
+          },
+        })
+
+        if (result.outcome !== 'rejected') return
+
+        if (result.reason !== 'conflict') {
+          this.#logger.info(
+            { task, reason: result.reason },
+            'inbox: a bot turn was rejected, so it was dropped',
+          )
+
+          return
+        }
+      }
+
+      this.#logger.warn({ task }, 'inbox: a bot turn kept conflicting, so it was dropped')
+    } catch (error) {
+      if (!committed) throw error
+
+      this.#logger.error({ err: error, task }, 'inbox: a bot turn failed after it committed')
+    }
+  }
+
+  /**
+   * Whether a turn still has something to do when it starts. A turn running again because its
+   * batch grew doesn't ask, since it is the one answering that batch.
+   */
+  #turnIsDue(trigger: BotTrigger, ticket: TicketSnapshot, unanswered: InboundMessage[]) {
+    switch (trigger.kind) {
+      case 'assigned':
+        return ticket.version === trigger.version
+      case 'message':
+        // A newer message's own turn takes the batch once its debounce passes.
+        return unanswered.at(-1)?.id === trigger.messageId
+      default: {
+        const unhandled: never = trigger
+
+        return unhandled
+      }
+    }
+  }
+
+  /**
+   * The inbound messages after the ticket's last reply by an attendant, oldest first.
+   */
+  async #unanswered(ticketId: TicketId): Promise<InboundMessage[]> {
+    const Message = await this.#config.model('message')
+
+    const answered = await Message.query()
+      .where('ticketId', ticketId)
+      .where('direction', 'outbound')
+      .whereNotNull('authorId')
+      .orderBy('id', 'desc')
+      .first()
+
+    const rows = await Message.query()
+      .where('ticketId', ticketId)
+      .where('direction', 'inbound')
+      .where('id', '>', answered?.id ?? 0)
+      .orderBy('id', 'asc')
+
+    return rows.map(row => ({ id: row.id, content: row.content, sentAt: row.sentAt }))
+  }
+
+  async #retry(task: InboxTask, delayMs: number) {
+    const retry = retryOf(task)
+
+    if (retry === null) {
+      this.#logger.warn({ task }, 'inbox: a task ran out of attempts')
+
+      return
+    }
+
+    await this.#tasks.enqueue(retry.task, delayMs)
+  }
+
   #enqueue(task: InboxTask) {
     return this.#tasks.enqueue(task, 0)
   }
@@ -961,6 +1460,51 @@ export class Inbox {
       await emit()
     } catch (error) {
       this.#logger.error({ err: error }, 'inbox: an event listener failed')
+    }
+  }
+}
+
+function unplanned(ticket: TicketSnapshot, actor: Actor): Planned {
+  return {
+    outcome: 'planned',
+    actor,
+    next: ticket,
+    steps: [],
+    reliance: { memberships: [], activeAttendants: [] },
+    sends: [],
+  }
+}
+
+/**
+ * The ticket change an effect makes. A send changes no ticket.
+ */
+function changeOf(
+  effect: Effect<string>,
+  bots: ReadonlyMap<string, BotAttendant>,
+  automation: string,
+): TicketChange[] {
+  switch (effect.effect) {
+    case 'apply':
+      return [effect.gesture]
+    case 'assign_bot': {
+      const bot = bots.get(effect.bot)
+
+      if (bot === undefined) {
+        throw new InboxError(
+          'E_INBOX_UNKNOWN_BOT',
+          `inbox: automation ${automation} assigns "${effect.bot}", which is not in config.bots`,
+        )
+      }
+
+      return [{ gesture: 'assign', to: bot.id }]
+    }
+
+    case 'send':
+      return []
+    default: {
+      const unhandled: never = effect
+
+      return unhandled
     }
   }
 }

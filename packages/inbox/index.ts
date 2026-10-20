@@ -75,6 +75,7 @@ export {
   SEND_TIMEOUT_MS,
   TASK_POLICY,
   tasks,
+  type BotTrigger,
   type InboxQueueJob,
   type InboxTask,
   type QueueDispatch,

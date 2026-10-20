@@ -1,4 +1,4 @@
-import type { ChannelEventId, MessageId } from './types.ts'
+import type { AttendantId, ChannelEventId, MessageId, TicketId } from './types.ts'
 
 /**
  * The inbox's work after a commit, as plain JSON so a queue can carry it. Every task is
@@ -7,6 +7,22 @@ import type { ChannelEventId, MessageId } from './types.ts'
 export type InboxTask =
   | { task: 'ingest'; channelEventId: ChannelEventId; attempt: number }
   | { task: 'dispatch'; messageId: MessageId; attempt: number }
+  | {
+      task: 'bot_turn'
+      ticketId: TicketId
+      botId: AttendantId
+      trigger: BotTrigger
+      attempt: number
+    }
+
+/**
+ * Why a bot turn runs. A turn after the bot got the ticket only runs while the ticket is still at
+ * the version that handed it over, and one after a message only while that message is the newest
+ * unanswered one, so a turn delivered twice, or overtaken, does nothing.
+ */
+export type BotTrigger =
+  | { kind: 'assigned'; version: number }
+  | { kind: 'message'; messageId: MessageId }
 
 /**
  * How long a dispatch owns a pending message. A worker that dies mid-send loses it after this.
@@ -31,6 +47,7 @@ interface RetryPolicy {
 export const TASK_POLICY = {
   ingest: { attempts: 7, firstDelayMs: 1000, maxDelayMs: 30_000 },
   dispatch: { attempts: 6, firstDelayMs: 2000, maxDelayMs: 60_000 },
+  bot_turn: { attempts: 4, firstDelayMs: 1000, maxDelayMs: 30_000 },
 } as const satisfies Record<InboxTask['task'], RetryPolicy>
 
 /**
