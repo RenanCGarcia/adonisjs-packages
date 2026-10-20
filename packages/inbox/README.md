@@ -4,7 +4,7 @@ A helpdesk inbox runtime for AdonisJS 7. Contacts write in through channels, the
 
 Your app owns every model file and every table. The package owns the ticket rules and talks to you through one service, `inbox`.
 
-> v1 is in progress. Tickets, attendants and queues work. Channels, webhook ingest, sending messages, bots and automations are not there yet.
+> v1 is in progress. Tickets, attendants, queues, channels, webhook ingest and sending messages work. Bots and automations are not there yet.
 
 ## Install
 
@@ -26,7 +26,7 @@ node ace migration:run
 
 ```ts
 // config/inbox.ts
-import { defineConfig, type InferBots } from '@enzopita/adonisjs-inbox'
+import { adapters, defineConfig, tasks, type InferBots } from '@enzopita/adonisjs-inbox'
 
 const inboxConfig = defineConfig({
   models: {
@@ -37,11 +37,16 @@ const inboxConfig = defineConfig({
 
   bots: ['triage'],
 
+  // Keyed by the provider column of your channels
+  channels: { fake: adapters.fake() },
+
+  tasks: tasks.inline(),
+
   // Return false and the call comes back { outcome: 'rejected', reason: 'forbidden' }
   authorize: ({ actor, operation, ticket }) =>
     operation.gesture !== 'close' || actor.kind === 'human',
 
-  // Merged into every ticket opened in a conversation of this channel
+  // Merged into every contact, conversation, ticket and message created from this channel
   ownership: channel => ({ tenantId: channel.tenantId }),
 })
 
@@ -54,7 +59,9 @@ declare module '@enzopita/adonisjs-inbox/types' {
 
 - `models` has one slot per role in `MODEL_ROLES`. Leaving one out, or pointing it at a model without its role's mixin, fails to compile. A JavaScript config fails the boot instead.
 - `bots` lists the bot keys. With the `InboxBots` augmentation, `inbox.attendants.bot('nope')` fails to compile.
-- `authorize` runs against the freshly read ticket on every attempt of `inbox.tickets.apply`. The releases the package does itself skip it.
+- `channels` maps each provider to its adapter.
+- `tasks` runs the work after a commit, ingesting a webhook or dispatching a message. `tasks.inline()` runs it in the process. `tasks.queue({ job })` hands it to an `@adonisjs/queue` job whose `execute` calls `inbox.run(this.payload)`.
+- `authorize` runs against the freshly read ticket on every attempt of `inbox.tickets.apply`, and of `inbox.messages.send` with the operation `{ gesture: 'send' }`. The releases the package does itself skip it.
 - `ownership` fills your own columns through `Model.create`, so your model hooks still run.
 
 ## Models
@@ -86,10 +93,23 @@ if (result.outcome === 'rejected') return response.conflict({ reason: result.rea
 | `attendants.deactivate(attendant)`             | Marks it inactive and returns every ticket it holds to its queue                                                |
 | `queues.addMember(queueId, attendant)`         | Adds the membership a human needs to hold tickets in that queue                                                 |
 | `queues.removeMember(queueId, attendant)`      | Removes it and returns the attendant's tickets in that queue                                                    |
+| `messages.send(id, content, author, options)`  | Replies on the ticket. Returns `queued` with the message id, or `rejected` with a reason                        |
+| `ingest(token, request)`                       | The webhook entry. Returns `accepted`, `unknown_channel` or `invalid_signature`                                 |
+| `recover()`                                    | Queues again webhooks and sends whose task was lost, such as after a restart. Run it periodically               |
 
 There are no locks. `apply` reads the ticket, plans the gesture with the pure `plan` function and writes it with a compare-and-swap on `version`. When another write landed in between, it reads and plans again, up to three times, and then gives up with `conflict`. A unique index on the open conversation keeps one open ticket per conversation. This works the same on sqlite, pg and mysql.
 
 Every change appends rows to `inbox_ticket_events`, in the same transaction. After the commit the app emitter gets `inbox:ticket_opened` and `inbox:ticket_changed`.
+
+## Channels and messages
+
+A channel adapter implements `ChannelAdapter`: `verify` and `parse` a webhook, and `send` a message. Its `capabilities` list what it can do beyond that, such as `send_text`. Message content is the `MessageContent` union, `{ kind: 'text', text }` for now, and a send of a kind the adapter doesn't declare comes back `rejected` with `unsupported_content`. The optional `connect`, `disconnect` and `checkHealth` are reserved for providers with a session to pair, and the inbox doesn't call them yet.
+
+`ingest` verifies the request, stores the body and queues its processing. Processing creates the contact, the conversation and a queued ticket on first contact, stores the message once however often the webhook repeats, and counts it unread. A status only moves forward, so a `read` that arrives before its `delivered` stays `read`.
+
+`messages.send` writes the message pending in the same compare-and-swap as the ticket, so a human replying to a queued ticket assumes it, and a reply to a ticket another human holds is rejected. After the commit a dispatch claims the message with a lease and sends it once. A retry with the same `clientRef` returns the message the first call stored.
+
+`@enzopita/adonisjs-inbox/testing` exports `FakeChannelAdapter`, `fakeWebhookBody` and `channelAdapterContract`, the Japa suite every adapter should pass.
 
 ## Pure parts
 
