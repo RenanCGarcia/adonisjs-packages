@@ -77,6 +77,28 @@ test.group('tasks', () => {
     assert.deepEqual(ran, [ingest])
   })
 
+  test('the inline driver drops delayed and new tasks once closed', async ({ assert }) => {
+    const ran: InboxTask[] = []
+    const driver = tasks.inline()(async task => void ran.push(task))
+
+    await driver.enqueue(ingest, 20)
+    driver.close()
+    await driver.enqueue(dispatch, 0)
+    await new Promise(resolve => setTimeout(resolve, 60))
+
+    assert.deepEqual(ran, [])
+  })
+
+  test('the inline driver runs a delayed task after its delay', async ({ assert }) => {
+    const ran: InboxTask[] = []
+    const driver = tasks.inline()(async task => void ran.push(task))
+
+    await driver.enqueue(ingest, 20)
+    await new Promise(resolve => setTimeout(resolve, 60))
+
+    assert.deepEqual(ran, [ingest])
+  })
+
   test('the queue driver dispatches the task to its queue with the delay', async ({ assert }) => {
     const dispatched: RecordedDispatch[] = []
     const job: InboxQueueJob = { dispatch: task => new RecordedDispatch(task, dispatched) }

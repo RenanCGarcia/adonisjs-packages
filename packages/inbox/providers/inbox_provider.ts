@@ -48,4 +48,10 @@ export default class InboxProvider {
   async boot() {
     await this.app.container.make('inbox')
   }
+
+  async shutdown() {
+    const inbox = await this.app.container.make('inbox')
+
+    inbox.close()
+  }
 }

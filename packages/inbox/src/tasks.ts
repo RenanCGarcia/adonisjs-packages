@@ -55,6 +55,11 @@ export type RunTask = (task: InboxTask) => Promise<void>
  */
 export interface TaskDriver {
   enqueue(task: InboxTask, delayMs: number): Promise<void>
+  /**
+   * Called when the app shuts down. A task that would run after it would find the database
+   * connection closed.
+   */
+  close(): void
 }
 
 export type TaskDriverFactory = (run: RunTask) => TaskDriver
@@ -84,13 +89,33 @@ export const tasks = {
    * timer, which a restart loses.
    */
   inline(): TaskDriverFactory {
-    return run => ({
-      async enqueue(task, delayMs) {
-        if (delayMs === 0) return run(task)
+    return run => {
+      const delayed = new Set<NodeJS.Timeout>()
+      let closed = false
 
-        setTimeout(() => void run(task), delayMs).unref()
-      },
-    })
+      return {
+        async enqueue(task, delayMs) {
+          if (closed) return
+
+          if (delayMs === 0) return run(task)
+
+          const timer = setTimeout(() => {
+            delayed.delete(timer)
+            void run(task)
+          }, delayMs).unref()
+
+          delayed.add(timer)
+        },
+
+        close() {
+          closed = true
+
+          for (const timer of delayed) clearTimeout(timer)
+
+          delayed.clear()
+        },
+      }
+    }
   },
 
   /**
@@ -104,6 +129,8 @@ export const tasks = {
 
         await (options.queue === undefined ? dispatch : dispatch.toQueue(options.queue)).run()
       },
+
+      close() {},
     })
   },
 }

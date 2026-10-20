@@ -106,6 +106,13 @@ export class Inbox {
     this.#tasks = config.tasks(task => this.run(task))
   }
 
+  /**
+   * Drops the tasks still waiting to run in this process. The provider calls it on shutdown.
+   */
+  close() {
+    this.#tasks.close()
+  }
+
   readonly tickets = {
     /**
      * Every ticket transition. It reads the ticket, plans the gesture and writes it with a
