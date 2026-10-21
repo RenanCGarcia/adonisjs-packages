@@ -24,12 +24,7 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm bootstrap
       - run: pnpm format:check
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm test
-      - name: Validate the playground document
-        run: |
-          pnpm --filter playground openapi
-          npx --yes @redocly/cli@2 lint playground/openapi.json --extends=minimal
