@@ -5,7 +5,7 @@ packages:
 catalogMode: strict
 
 catalog:
-  '@adonisjs/assembler': ^8.5.2
+  '@adonisjs/assembler': ^8.6.0
   '@adonisjs/core': ^7.6.0
   '@adonisjs/tsconfig': ^2.0.0
   '@japa/assert': ^4.2.0

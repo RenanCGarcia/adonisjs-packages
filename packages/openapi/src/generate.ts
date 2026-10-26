@@ -116,7 +116,9 @@ function responsesFor(
       : { description, content: { 'application/json': { schema: types.schemas.convert(payload) } } }
   }
 
-  const members = response?.isUnion() ? response.types : response ? [response] : []
+  let members: ts.Type[] = []
+
+  if (response) members = response.isUnion() ? response.types : [response]
 
   for (const member of members) {
     const status = types.property(member, '__status')
