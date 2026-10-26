@@ -4,6 +4,7 @@ import ts from 'typescript'
 import type { ApplicationService } from '@adonisjs/core/types'
 import type { Router } from '@adonisjs/core/http'
 import { collectRoutes } from './collect_routes.ts'
+import type { ThrownResponse } from './operation_docs.ts'
 import { RouteTypes } from './route_types.ts'
 import type {
   JsonSchema,
@@ -101,7 +102,7 @@ function responsesFor(
   route: RouteOperation,
   types: RouteTypes,
   response: ts.Type | undefined,
-  thrown: Record<string, string>,
+  thrown: Record<string, ThrownResponse>,
   secured: boolean,
   warnings: string[],
 ) {
@@ -131,9 +132,23 @@ function responsesFor(
     }
   }
 
-  for (const [code, description] of Object.entries(thrown)) responses[code] ??= { description }
-
   const validationError = route.validator && types.validationError()
+
+  for (const [code, { description, bodies }] of Object.entries(thrown)) {
+    if (responses[code]) continue
+
+    // The validator's error shares the status code an exception documents, so the body is either.
+    const schemas = [
+      ...bodies,
+      ...(code === '422' && validationError ? [validationError] : []),
+    ].map(body => types.schemas.convert(body))
+
+    const schema = schemas.length > 1 ? { oneOf: schemas } : schemas[0]
+
+    responses[code] = schema
+      ? { description, content: { 'application/json': { schema } } }
+      : { description }
+  }
 
   if (validationError && !responses['422']) describe('422', validationError)
 
@@ -188,7 +203,13 @@ export async function generateDocument(
     const readsQueryOnly = route.methods.every(method => method === 'get' || method === 'options')
     const fields = input && pick(input, key => !NOT_IN_BODY.has(key))
 
-    const body = readsQueryOnly ? undefined : fields
+    const { responses: thrown, requestBody, problems, ...docs } = types.docs(route)
+
+    warnings.push(...problems.map(problem => `${route.name}: ${problem}`))
+
+    const validated = readsQueryOnly ? undefined : fields
+    const body = requestBody ? types.schemas.convert(requestBody) : validated
+
     const query = readsQueryOnly ? fields : input?.properties?.query
     const parameters = parametersFor(route, query, input?.properties?.params)
 
@@ -198,8 +219,6 @@ export async function generateDocument(
     const security: Record<string, string[]>[] = schemes.length
       ? [Object.fromEntries(schemes.map(scheme => [scheme, []]))]
       : []
-
-    const { responses: thrown, ...docs } = types.docs(route)
 
     const operation: Omit<OpenApiOperation, 'operationId'> = {
       ...docs,

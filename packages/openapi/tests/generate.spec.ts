@@ -10,10 +10,13 @@ const run = promisify(execFile)
 
 test.group('openapi:generate on the playground app', group => {
   let document: OpenApiDocument
+  let logs: string
 
   group.setup(async () => {
     await run('node', ['ace', 'codegen'], { cwd: playground })
-    await run('node', ['ace', 'openapi:generate', `--output=${output}`], { cwd: playground })
+    ;({ stdout: logs } = await run('node', ['ace', 'openapi:generate', `--output=${output}`], {
+      cwd: playground,
+    }))
     document = JSON.parse(await readFile(new URL(output, playground), 'utf8'))
 
     return () => rm(new URL(output, playground))
@@ -29,6 +32,7 @@ test.group('openapi:generate on the playground app', group => {
       '/api/v1/account/avatar',
       '/api/v1/users',
       '/api/v1/users/{id}',
+      '/api/v1/webhooks/mail',
     ])
   })
 
@@ -122,6 +126,45 @@ test.group('openapi:generate on the playground app', group => {
     })
   })
 
+  test('documents the status and body of an exception named by @throws', ({ assert }) => {
+    const unprocessable = document.paths['/api/v1/auth/signup']!.post!.responses['422']!
+
+    assert.equal(unprocessable.description, 'Unprocessable Entity')
+    assert.deepEqual(unprocessable.content!['application/json']!.schema.oneOf, [
+      {
+        type: 'object',
+        properties: {
+          code: { type: 'string', const: 'E_DISPOSABLE_EMAIL' },
+          message: { type: 'string' },
+          domain: { type: 'string' },
+        },
+        required: ['code', 'message', 'domain'],
+        additionalProperties: false,
+      },
+      { $ref: '#/components/schemas/ValidationError' },
+    ])
+  })
+
+  test('takes the request body of an unvalidated handler from @requestBody', ({ assert }) => {
+    assert.deepEqual(document.paths['/api/v1/webhooks/mail']!.post!.requestBody, {
+      required: true,
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              type: { type: 'string', enum: ['delivered', 'bounced'] },
+              messageId: { type: 'string' },
+              occurredAt: { type: 'string' },
+            },
+            required: ['type', 'messageId', 'occurredAt'],
+            additionalProperties: false,
+          },
+        },
+      },
+    })
+  })
+
   test('takes the status code from the response helper the handler returns', ({ assert }) => {
     const signup = document.paths['/api/v1/auth/signup']!.post!.responses
 
@@ -162,6 +205,25 @@ test.group('openapi:generate on the playground app', group => {
         .schema,
       { $ref: '#/components/schemas/ValidationError' },
     )
+  })
+
+  test('documents each exception of a union @throws under its own status', ({ assert }) => {
+    const conflict = document.paths['/api/v1/auth/signup']!.post!.responses['409']!
+
+    assert.deepEqual(conflict.content!['application/json']!.schema, {
+      type: 'object',
+      properties: {
+        code: { type: 'string', const: 'E_EMAIL_TAKEN' },
+        message: { type: 'string' },
+      },
+      required: ['code', 'message'],
+      additionalProperties: false,
+    })
+  })
+
+  test('reads the response helper an exception answers with in its handle()', ({ assert }) => {
+    assert.notInclude(logs, '@throws')
+    assert.property(document.paths['/api/v1/auth/signup']!.post!.responses, '409')
   })
 
   test('writes the tags from the config', ({ assert }) => {

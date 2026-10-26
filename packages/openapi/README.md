@@ -233,7 +233,51 @@ export default class UsersController {
 - The first paragraph is the `summary`. The next paragraphs and `@remarks` are the `description`.
 - `@deprecated` marks the operation as deprecated.
 - `@tags Users, Admin` sets the operation tags. On the class, it applies to every method. A method's own `@tags` replaces the class tags. Without either, the tag is the first segment of the route name.
-- `@throws {404} User not found` adds a `404` response with that description. Without a description, the standard status text is used. Tags whose type is not a three-digit code are ignored.
+- `@throws {404} User not found` adds a `404` response with that description. Without a description, the standard status text is used. A tag that can't be documented, such as a name not in scope or a class with no status code, is skipped with a warning from `openapi:generate`.
+- `@throws {SmsRejectedException}` adds the response of an exception class. See [Exception responses](#exception-responses).
+- `@throws {SmsRejectedException | InvalidAttachmentException}` adds the response of each class in the union, each under its own status code.
+- `@requestBody {TypeName}` sets the request body schema from a type in scope in the controller file. Use it when the handler reads the body without a validator, such as a webhook payload. It replaces the body the validator would document.
+
+## Exception responses
+
+An exception class named by `@throws` documents its status code and its body:
+
+- A response helper that `handle()` calls, such as `response.conflict(body)` or `response.unprocessableEntity(body)`, adds its status code and body.
+- A `response.send(...)` or `response.json(...)` call adds a response with the status code of `static status`, on the class or a parent class: a number such as `422`, `422 as const`, a constant or an enum member. Without one, the code passed to `response.status(...)` is used. The body is the return type of an instance method named `toResponse()` or, without it, the type of what each call sends.
+- A class whose `handle()` sends nothing still adds the response of its `static status`, with `toResponse()` as the body when it has one.
+
+`handle()` is read with the functions of the app it calls, such as a shared `renderError(ctx, error)`. Functions from packages are not followed, and only calls on an `HttpResponse` count.
+
+```ts
+export default class SmsRejectedException extends Exception {
+  static override status = 422
+  static override code = 'E_SMS_REJECTED'
+
+  constructor(public reason: string) {
+    super('The SMS was rejected')
+  }
+
+  toResponse() {
+    return { code: 'E_SMS_REJECTED' as const, message: this.message, reason: this.reason }
+  }
+
+  async handle(error: this, { response }: HttpContext) {
+    response.status(error.status).send(error.toResponse())
+  }
+}
+```
+
+An exception can also leave both to `handle()`:
+
+```ts
+export default class EmailTakenException extends Exception {
+  async handle(error: this, { response }: HttpContext) {
+    response.conflict({ code: 'E_EMAIL_TAKEN' as const, message: error.message })
+  }
+}
+```
+
+The class must be in scope in the controller file, usually through the import the handler throws it with. When several exceptions share a status code, or an exception uses `422` on a route that validates its input, the body schema is a `oneOf` of each body and `ValidationError`.
 
 ## Status codes
 
@@ -263,6 +307,6 @@ When `.adonisjs/client/data.d.ts` exists, every type in its `Data` namespace bec
 ## Limitations
 
 - A status code set with `response.status(201)` is not detected, because the return type does not carry it. Return a helper such as `response.created(body)` instead.
-- A thrown exception has no return type either. Add a `@throws` tag for each status code it can produce, such as the `404` of `findOrFail()`.
+- A thrown exception has no return type either. Add a `@throws` tag for each status code it can produce, such as the `404` of `findOrFail()`, or for each exception class it throws.
 - A nested transformer is matched to its named schema by shape. Two transformers with the same output share the first schema name.
 - Every type in `Data` is written to `components.schemas`, even if no route returns it.

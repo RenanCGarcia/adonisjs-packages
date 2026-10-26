@@ -172,7 +172,9 @@ export class RouteTypes {
         member.name.text === controller?.method,
     )
 
-    return declaration && method ? operationDocs(declaration, method) : { responses: {} }
+    return declaration && method
+      ? operationDocs(this.checker, declaration, method)
+      : { responses: {}, problems: [] }
   }
 
   property(type: ts.Type, name: string) {

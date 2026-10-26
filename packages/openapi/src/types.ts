@@ -20,6 +20,7 @@ export interface JsonSchema {
   minItems?: number
   maxItems?: number
   anyOf?: JsonSchema[]
+  oneOf?: JsonSchema[]
   not?: JsonSchema
 }
 

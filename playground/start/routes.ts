@@ -44,6 +44,8 @@ router
       })
       .prefix('users')
       .as('users')
+
+    router.post('webhooks/mail', [controllers.MailEvents, 'store']).as('webhooks.mail')
   })
   .prefix('/api/v1')
 
