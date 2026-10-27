@@ -1,5 +1,6 @@
 import { Readable } from 'node:stream'
 import { fileURLToPath } from 'node:url'
+import { Exception } from '@adonisjs/core/exceptions'
 import User from '#models/user'
 import EmailTakenException from '#exceptions/email_taken_exception'
 import { echoProbeValidator, searchProbeValidator } from '#validators/probe'
@@ -72,6 +73,15 @@ export default class ProbeController {
   async thrown({ request }: HttpContext) {
     if (request.input('email')) throw new EmailTakenException(request.input('email'))
     return { available: true }
+  }
+
+  /**
+   * @throws {403} Lacks `probe.manage`
+   */
+  async gated({ request }: HttpContext) {
+    if (!request.input('manage'))
+      throw new Exception('Lacks probe.manage', { code: 'E_FORBIDDEN', status: 403 })
+    return { gated: true }
   }
 
   async model() {

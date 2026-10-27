@@ -61,6 +61,7 @@ test.group('openapi:generate on the playground app', group => {
       '/api/v1/probe/stream',
       '/api/v1/probe/thrown',
       '/api/v1/probe/verified',
+      '/api/v1/probe/gated',
       '/api/v1/probe/model',
       '/api/v1/probe/collections',
       '/api/v1/probe/search',
@@ -402,6 +403,20 @@ test.group('openapi:generate on the playground app', group => {
         message: { type: 'string' },
       }),
     )
+  })
+
+  test('adds the handler body of a numeric @throws to the bodies a middleware answers with', ({
+    assert,
+  }) => {
+    assert.deepEqual(json(probe('gated').responses['403']), {
+      oneOf: [
+        object({ code: { type: 'string', const: 'E_FORBIDDEN' }, message: { type: 'string' } }),
+        object({
+          code: { type: 'string', const: 'E_EMAIL_NOT_VERIFIED' },
+          message: { type: 'string' },
+        }),
+      ],
+    })
   })
 
   test('emits {} and a warning for a Lucid model', ({ assert }) => {

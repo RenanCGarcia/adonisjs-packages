@@ -241,11 +241,17 @@ function responsesFor(
 
   const typed = outcomes.size > 0
 
-  for (const [code, { description, bodies }] of Object.entries(thrown)) {
+  // An error the app answers without a documented body, such as a `@throws {404}` or the 401 of a
+  // secured route, gets the body its exception handler renders.
+  const { byCode, fallback } = types.errorResponses()
+
+  for (const [code, { description, bodies, rendered }] of Object.entries(thrown)) {
     const found = outcome(code)
 
     found.reasons.push(description)
     found.bodies.push(...bodies.map(json))
+
+    if (rendered) found.bodies.push(...(byCode.get(code) ?? fallback).map(json))
   }
 
   // The validator's error shares the status code an exception documents, so the body is either.
@@ -255,10 +261,6 @@ function responsesFor(
 
   for (const { code, body } of types.middlewareResponses(route))
     outcome(code).bodies.push(...(body ? [json(body)] : []))
-
-  // An error the app answers without a documented body, such as a `@throws {404}` or the 401 of a
-  // secured route, gets the body its exception handler renders.
-  const { byCode, fallback } = types.errorResponses()
 
   if (secured) {
     const auth = types.unauthorizedBody()

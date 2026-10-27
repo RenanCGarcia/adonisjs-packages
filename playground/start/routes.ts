@@ -67,6 +67,7 @@ router
           .get('verified', [controllers.Probe, 'text'])
           .as('verified')
           .use(middleware.verifiedEmail())
+        router.get('gated', [controllers.Probe, 'gated']).use(middleware.verifiedEmail())
         router.get('model', [controllers.Probe, 'model'])
         router.get('collections', [controllers.Probe, 'collections'])
         router.get('search', [controllers.Probe, 'search'])

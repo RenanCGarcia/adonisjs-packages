@@ -1,5 +1,5 @@
 import app from '@adonisjs/core/services/app'
-import type { Exception } from '@adonisjs/core/exceptions'
+import { Exception } from '@adonisjs/core/exceptions'
 import { type HttpContext, ExceptionHandler } from '@adonisjs/core/http'
 
 export default class HttpExceptionHandler extends ExceptionHandler {
@@ -14,6 +14,10 @@ export default class HttpExceptionHandler extends ExceptionHandler {
    * response to the client
    */
   async handle(error: unknown, ctx: HttpContext) {
+    if (error instanceof Exception && error.code === 'E_FORBIDDEN') {
+      return ctx.response.forbidden({ code: 'E_FORBIDDEN' as const, message: error.message })
+    }
+
     return super.handle(error, ctx)
   }
 

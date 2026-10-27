@@ -24,6 +24,11 @@ export interface OperationDocs {
 export interface ThrownResponse {
   description: string
   bodies: ts.Type[]
+  /**
+   * A tag such as `@throws {403}` names a status the app's exception handler renders, so its body
+   * joins the others the status has.
+   */
+  rendered: boolean
 }
 
 function jsDoc(node: ts.Node) {
@@ -46,7 +51,7 @@ function tagsOf(doc: ts.JSDoc | undefined) {
   )
 }
 
-type Thrown = { code: string; bodies: ts.Type[] }
+type Thrown = { code: string; bodies: ts.Type[]; rendered?: true }
 
 /**
  * The symbol of the module a specifier such as `#exceptions/user_disabled_exception` names,
@@ -228,7 +233,7 @@ function thrownResponses(
   if (ts.isLiteralTypeNode(type)) {
     const code = statusOf(checker.getTypeFromTypeNode(type))
 
-    if (code) return [{ code, bodies: [] }]
+    if (code) return [{ code, bodies: [], rendered: true }]
 
     problems.push(`@throws: ${type.getText()} is not a status code`)
 
@@ -483,10 +488,17 @@ export function operationDocs(
 
         if (reason && !reasons.includes(reason)) reasons.push(reason)
 
-        const response = (responses[thrown.code] ??= { description: '', bodies: [] })
+        const response = (responses[thrown.code] ??= {
+          description: '',
+          bodies: [],
+          rendered: false,
+        })
+
         response.description =
           reasons.join('; ') || (STATUS_CODES[Number(thrown.code)] ?? thrown.code)
         response.bodies.push(...thrown.bodies)
+
+        if (thrown.rendered) response.rendered = true
       }
     } else if (tag.tagName.text === 'requestBody')
       requestBody = requestBodyType(checker, resolveModule, method, tag, problems)
