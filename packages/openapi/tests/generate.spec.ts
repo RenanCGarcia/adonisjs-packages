@@ -1,7 +1,8 @@
 import { execFile } from 'node:child_process'
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { cp, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, relative } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
 import { test } from '@japa/runner'
 import type { JsonSchema, OpenApiDocument, OpenApiResponse } from '../src/types.ts'
@@ -9,6 +10,8 @@ import type { JsonSchema, OpenApiDocument, OpenApiResponse } from '../src/types.
 const playground = new URL('../../../playground/', import.meta.url)
 const output = 'tmp/openapi.spec.json'
 const golden = new URL('fixtures/playground.openapi.json', import.meta.url)
+const brokenApp = new URL('fixtures/broken_app/', import.meta.url)
+const unauthorizedApp = new URL('fixtures/unauthorized_app/', import.meta.url)
 const run = promisify(execFile)
 
 const json = (response: OpenApiResponse | undefined) =>
@@ -19,6 +22,16 @@ const object = (properties: Record<string, JsonSchema>): JsonSchema => ({
   properties,
   additionalProperties: false,
   required: Object.keys(properties),
+})
+
+const authorizationFailure = object({
+  code: { type: 'string', const: 'E_AUTHORIZATION_FAILURE' },
+  message: { type: 'string' },
+})
+
+const emailNotVerified = object({
+  code: { type: 'string', const: 'E_EMAIL_NOT_VERIFIED' },
+  message: { type: 'string' },
 })
 
 test.group('openapi:generate on the playground app', group => {
@@ -61,10 +74,22 @@ test.group('openapi:generate on the playground app', group => {
       '/api/v1/probe/aborted',
       '/api/v1/probe/download',
       '/api/v1/probe/attachment',
+      '/api/v1/probe/report',
+      '/api/v1/probe/export',
       '/api/v1/probe/stream',
       '/api/v1/probe/thrown',
       '/api/v1/probe/verified',
       '/api/v1/probe/gated',
+      '/api/v1/probe/reasoned',
+      '/api/v1/probe/authorized',
+      '/api/v1/probe/viewed',
+      '/api/v1/probe/hidden',
+      '/api/v1/probe/users/{id}',
+      '/api/v1/probe/plan',
+      '/api/v1/probe/seats',
+      '/api/v1/probe/maintenance',
+      '/api/v1/probe/upstream',
+      '/api/v1/probe/throttled',
       '/api/v1/probe/model',
       '/api/v1/probe/collections',
       '/api/v1/probe/search',
@@ -160,7 +185,7 @@ test.group('openapi:generate on the playground app', group => {
     assert.deepEqual(document.paths['/api/v1/account/profile']!.get!.tags, ['profile'])
   })
 
-  test('documents the status codes named by @throws with the exception handler body', ({
+  test('documents the 404 of findOrFail with the handler body, described by @response', ({
     assert,
   }) => {
     assert.deepEqual(document.paths['/api/v1/users/{id}']!.get!.responses['404'], {
@@ -250,29 +275,10 @@ test.group('openapi:generate on the playground app', group => {
   test('adds the 401 response E_UNAUTHORIZED_ACCESS renders to routes behind a security scheme', ({
     assert,
   }) => {
-    assert.deepEqual(document.paths['/api/v1/account/profile']!.get!.responses['401'], {
-      description: 'Unauthorized',
-      content: {
-        'application/json': {
-          schema: {
-            type: 'object',
-            properties: {
-              errors: {
-                type: 'array',
-                items: {
-                  type: 'object',
-                  properties: { message: { type: 'string' } },
-                  additionalProperties: false,
-                  required: ['message'],
-                },
-              },
-            },
-            additionalProperties: false,
-            required: ['errors'],
-          },
-        },
-      },
-    })
+    assert.deepEqual(
+      json(document.paths['/api/v1/account/profile']!.get!.responses['401']),
+      object({ errors: { type: 'array', items: object({ message: { type: 'string' } }) } }),
+    )
     assert.notProperty(document.paths['/api/v1/auth/login']!.post!.responses, '401')
   })
 
@@ -298,9 +304,8 @@ test.group('openapi:generate on the playground app', group => {
     )
   })
 
-  test('documents each exception of a union @throws under its own status, also when named by import()', ({
-    assert,
-  }) => {
+  test('resolves a @throws class by name without an import', ({ assert }) => {
+    assert.notInclude(logs, 'OA-T002')
     const conflict = document.paths['/api/v1/auth/signup']!.post!.responses['409']!
 
     assert.deepEqual(conflict.content!['application/json']!.schema, {
@@ -386,6 +391,12 @@ test.group('openapi:generate on the playground app', group => {
     const binary = { 'application/octet-stream': { schema: { type: 'string', format: 'binary' } } }
 
     assert.deepEqual(probe('download').responses['200']!.content, binary)
+    assert.deepEqual(probe('report').responses['200']!.content, {
+      'application/pdf': { schema: { type: 'string', format: 'binary' } },
+    })
+    assert.deepEqual(probe('export').responses['200']!.content, {
+      'text/csv': { schema: { type: 'string', format: 'binary' } },
+    })
     assert.deepEqual(probe('stream').responses['200']!.content, binary)
     assert.deepEqual(probe('attachment').responses['200'], {
       description: 'OK',
@@ -408,24 +419,108 @@ test.group('openapi:generate on the playground app', group => {
     )
   })
 
-  test('adds the handler body of a numeric @throws to the bodies a middleware answers with', ({
+  test('joins the bodies of the middleware and the action that answer with one status, and only those', ({
     assert,
   }) => {
     assert.deepEqual(json(probe('gated').responses['403']), {
-      oneOf: [
-        object({ code: { type: 'string', const: 'E_FORBIDDEN' }, message: { type: 'string' } }),
-        object({
-          code: { type: 'string', const: 'E_EMAIL_NOT_VERIFIED' },
-          message: { type: 'string' },
-        }),
-      ],
+      oneOf: [authorizationFailure, emailNotVerified],
     })
   })
 
-  test('keeps a numeric @throws on the body of the exception the handler throws', ({ assert }) => {
+  test('describes a thrown status with @response without adding a body', ({ assert }) => {
+    assert.deepEqual(probe('thrown').responses['409'], {
+      description: 'The email is taken',
+      content: {
+        'application/json': {
+          schema: object({
+            code: { type: 'string', const: 'E_EMAIL_TAKEN' },
+            message: { type: 'string' },
+          }),
+        },
+      },
+    })
+    assert.deepEqual(probe('reasoned').responses['403'], {
+      description: 'Verify the email address first',
+      content: { 'application/json': { schema: emailNotVerified } },
+    })
+  })
+
+  test('documents the 403 bouncer.authorize() throws with the body of its handler branch', ({
+    assert,
+  }) => {
+    for (const path of ['authorized', 'viewed'])
+      assert.deepEqual(probe(path).responses['403'], {
+        description: 'Forbidden',
+        content: { 'application/json': { schema: authorizationFailure } },
+      })
+
+    assert.notProperty(probe('text').responses, '403')
+    assert.notProperty(probe('thrown').responses, '403')
+  })
+
+  test('documents the status a policy denies with from @response {N} {Type}', ({ assert }) => {
+    assert.deepEqual(probe('hidden').responses['404'], {
+      description: 'The probe is hidden from guests',
+      content: { 'application/json': { schema: authorizationFailure } },
+    })
+    assert.property(probe('hidden').responses, '403')
+  })
+
+  test('follows findOrFail into the app functions the action calls', ({ assert }) => {
+    assert.deepEqual(probe('users/{id}').responses['404'], {
+      description: 'Not Found',
+      content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
+    })
+  })
+
+  test('documents what a package middleware named in errors.middleware throws', ({ assert }) => {
     assert.deepEqual(
-      json(probe('thrown').responses['409']),
-      object({ code: { type: 'string', const: 'E_EMAIL_TAKEN' }, message: { type: 'string' } }),
+      json(probe('throttled').responses['429']),
+      object({
+        code: { type: 'string', const: 'E_TOO_MANY_REQUESTS' },
+        message: { type: 'string' },
+        retryAfter: { type: 'number' },
+      }),
+    )
+  })
+
+  test('declares a status body with @response {N} {Type}', ({ assert }) => {
+    assert.deepEqual(probe('upstream').responses, {
+      '502': {
+        description: 'The mail provider did not answer',
+        content: {
+          'application/json': {
+            schema: object({
+              code: { type: 'string' },
+              message: { type: 'string' },
+              provider: { type: 'string' },
+            }),
+          },
+        },
+      },
+    })
+  })
+
+  test('renders an exception without a body of its own as the handler does for its class', ({
+    assert,
+  }) => {
+    const limit = object({
+      code: { type: 'string' },
+      message: { type: 'string' },
+      upgradeUrl: { type: 'string' },
+    })
+
+    assert.deepEqual(json(probe('plan').responses['402']), limit)
+    assert.deepEqual(json(probe('seats').responses['402']), limit)
+  })
+
+  test('falls through a handler branch that sends nothing', ({ assert }) => {
+    assert.deepEqual(json(probe('maintenance').responses['503']), {
+      $ref: '#/components/schemas/Error',
+    })
+    assert.deepEqual(
+      document.components.schemas.Error,
+      object({ code: { type: 'string' }, message: { type: 'string' } }),
     )
   })
 
@@ -513,7 +608,27 @@ test.group('openapi:generate --explain', () => {
 
     assert.include(stdout, 'throw new EmailTakenException() (app/services/create_account.ts:')
     assert.include(stdout, 'a @throws tag (app/controllers/new_account_controller.ts:')
+    assert.match(
+      stdout,
+      /409\n(?: {2}.+\n)*? {2}a @throws tag \(app\/controllers\/new_account_controller\.ts:\d+\)/,
+    )
     assert.include(stdout, 'the validator rejects the input')
+  })
+
+  test('names the call and the package middleware an exception comes from', async ({ assert }) => {
+    const gated = await run('node', ['ace', 'openapi:generate', '--explain=probe.probe.gated'], {
+      cwd: playground,
+    })
+
+    const throttled = await run('node', ['ace', 'openapi:generate', '--explain=probe.throttled'], {
+      cwd: playground,
+    })
+
+    assert.include(
+      gated.stdout,
+      'bouncer.authorize() throws E_AUTHORIZATION_FAILURE (app/controllers/probe_controller.ts:',
+    )
+    assert.include(throttled.stdout, 'the middleware globalThrottle (config/openapi.ts:')
   })
 
   test('names the middleware that secures a route', async ({ assert }) => {
@@ -558,5 +673,177 @@ test.group('openapi:check', group => {
 
     assert.exists(error)
     assert.include(`${error!.stdout}${error!.stderr}`, '/info/version')
+  })
+})
+
+/**
+ * A copy of the playground with `overlay` laid over it, so the playground stays valid. Returns the
+ * copy's directory and what `openapi:generate` printed.
+ */
+async function generateInCopy(overlay: (dir: string) => Promise<void>) {
+  const source = fileURLToPath(playground)
+  const dir = await mkdtemp(join(tmpdir(), 'openapi-copy-'))
+
+  await cp(source, dir, {
+    recursive: true,
+    filter: path =>
+      !/^(node_modules|tmp|build|\.adonisjs|openapi\.json)(\/|$)/.test(relative(source, path)),
+  })
+  await symlink(join(source, 'node_modules'), join(dir, 'node_modules'))
+  await mkdir(join(dir, 'tmp'))
+  await overlay(dir)
+  await run('node', ['ace', 'codegen'], { cwd: dir })
+
+  const result = await run('node', ['ace', 'openapi:generate'], { cwd: dir }).then(
+    success => success,
+    (error: { stdout: string; stderr: string }) => error,
+  )
+
+  return { dir, output: `${result.stdout}${result.stderr}` }
+}
+
+test.group('openapi:generate on an app whose handler renders E_UNAUTHORIZED_ACCESS', group => {
+  let document: OpenApiDocument
+  let dir: string
+
+  group.setup(async () => {
+    ;({ dir } = await generateInCopy(copy =>
+      cp(fileURLToPath(unauthorizedApp), copy, { recursive: true }),
+    ))
+    document = JSON.parse(await readFile(join(dir, 'openapi.json'), 'utf8'))
+
+    return () => rm(dir, { recursive: true })
+  })
+
+  test('documents the 401 of a secured route with the body of the handler branch', ({ assert }) => {
+    assert.deepEqual(
+      json(document.paths['/api/v1/account/profile']!.get!.responses['401']),
+      object({
+        code: { type: 'string', const: 'E_UNAUTHORIZED_ACCESS' },
+        message: { type: 'string' },
+      }),
+    )
+  })
+})
+
+test.group('openapi:generate on an app whose tags are wrong', group => {
+  let output: string
+  let dir: string
+
+  group.setup(async () => {
+    ;({ dir, output } = await generateInCopy(copy =>
+      cp(fileURLToPath(brokenApp), copy, { recursive: true }),
+    ))
+
+    return () => rm(dir, { recursive: true })
+  })
+
+  test('fails and writes no document', async ({ assert }) => {
+    assert.include(output, 'The errors above block the document')
+    await assert.rejects(() => readFile(join(dir, 'openapi.json')))
+  })
+
+  test('rejects a numeric @throws and a union with the fix', ({ assert }) => {
+    assert.include(
+      output,
+      'OA-T001 broken.numeric: @throws: 404 names a status code, not an exception class: use `@response {404} reason` to describe a derived status, `@response {404} {Type}` to declare a body, or `@throws {Class}`',
+    )
+    assert.include(
+      output,
+      'OA-T001 broken.union: @throws: PlanLimitException | MaintenanceException names several classes: write one @throws tag per class',
+    )
+  })
+
+  test('rejects a @throws without braces with the fix', ({ assert }) => {
+    assert.include(
+      output,
+      'OA-T001 broken.unbraced: @throws EmailTakenException has no braces around the class: write it as `@throws {EmailTakenException} reason`',
+    )
+    assert.include(
+      output,
+      'OA-T001 broken.unbraced_status: @throws 404 names a status code, not an exception class: use `@response {404} reason`',
+    )
+  })
+
+  test('lists the candidates of a @throws class name that resolves to none or several', ({
+    assert,
+  }) => {
+    assert.include(
+      output,
+      'OA-T002 broken.duplicate: @throws: LimitException: several exception classes are named LimitException: app/exceptions/billing/limit_exception.ts, app/exceptions/storage/limit_exception.ts',
+    )
+    assert.include(
+      output,
+      'OA-T002 broken.missing: @throws: QuotaException: no exception class of the app is named QuotaException',
+    )
+    assert.notInclude(output, 'broken.escaped')
+  })
+
+  test('rejects a @response reason for a status nothing documents', ({ assert }) => {
+    assert.include(output, 'OA-T003 broken.underived: @response {418}: nothing documents a 418')
+  })
+
+  test('rejects a @response type it cannot read', ({ assert }) => {
+    const errors = output.split('\n').filter(line => line.includes('[ error ]'))
+
+    assert.isTrue(
+      errors.some(line =>
+        line.includes(
+          'OA-T007 broken.inline: @response {502} {{ provider: string }}: an inline object type is not read: declare it as a type, such as `type Body = { provider: string }`, and write `@response {502} {Body}`',
+        ),
+      ),
+    )
+    assert.isTrue(
+      errors.some(line =>
+        line.includes(
+          'OA-T007 broken.unresolved: @response {UpstreamFailure}: UpstreamFailure is not in scope',
+        ),
+      ),
+    )
+  })
+
+  test('warns about a tag the generator does not read', ({ assert }) => {
+    assert.include(output, 'OA-T008 broken.misspelled: @reponse is not a tag the generator reads')
+    assert.include(
+      output,
+      'OA-T008 broken.annotated: @summary is not a tag the generator reads: the first paragraph of the comment is the summary',
+    )
+    assert.notInclude(output, 'OA-T008 broken.annotated: @internal')
+    assert.notInclude(output, 'OA-T008 broken.annotated: @todo')
+  })
+
+  test('warns that a package exception renders a body its declaration does not carry', ({
+    assert,
+  }) => {
+    assert.include(output, 'OA-E002 E_INVALID_CREDENTIALS renders its own body')
+  })
+
+  test('reads the status of an errors entry without running its class', ({ assert }) => {
+    assert.notInclude(output, 'LedgerException constructed')
+    assert.notInclude(output, "errors.throwers['ledger.reject']")
+    assert.notInclude(output, "errors.throwers['verifyCredentials']")
+  })
+
+  test('warns about an errors key that matches nothing', ({ assert }) => {
+    assert.include(
+      output,
+      "OA-E003 errors.throwers['bouncer.authorise'] matches no call of the documented routes",
+    )
+    assert.include(
+      output,
+      "OA-E003 errors.middleware['#start/limiter'] matches no middleware of the documented routes: name the middleware as `node ace list:routes` shows it",
+    )
+  })
+})
+
+test.group('defineConfig', () => {
+  test('rejects the removed errorResponse option', async ({ assert }) => {
+    const { defineConfig } = await import('../src/define_config.ts')
+
+    assert.throws(
+      // SAFETY: a JavaScript config has no types to reject the removed option, which is what this checks.
+      () => defineConfig({ errorResponse: 'ApiError' } as never),
+      'openapi: "errorResponse" is removed, set the error body type in "errors.body"',
+    )
   })
 })

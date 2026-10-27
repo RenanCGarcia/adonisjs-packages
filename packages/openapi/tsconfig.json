@@ -3,5 +3,7 @@
   "compilerOptions": {
     "rootDir": "./",
     "outDir": "./build"
-  }
+  },
+  // The app tests/fixtures/broken_app overlays on a copy of the playground, which resolves its imports.
+  "exclude": ["build", "node_modules", "tests/fixtures"]
 }

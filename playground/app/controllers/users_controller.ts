@@ -27,7 +27,7 @@ export default class UsersController {
    *
    * Looks the user up by its numeric id.
    *
-   * @throws {404} User not found
+   * @response {404} User not found
    */
   async show({ request, serialize }: HttpContext) {
     const { params } = await request.validateUsing(showUserValidator)

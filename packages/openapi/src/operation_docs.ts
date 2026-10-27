@@ -1,5 +1,9 @@
-import { STATUS_CODES } from 'node:http'
 import ts from 'typescript'
+import type { ExceptionType } from './exception_class.ts'
+import { unknownTag } from './known_tags.ts'
+import { fileType } from './media_type.ts'
+import { responseTag, type ResponseTag } from './response_tag.ts'
+import { throwsTag, type FindException, type ThrowsTag } from './throws_tag.ts'
 import type { DiagnosticCode } from './types.ts'
 
 export interface OperationDocs {
@@ -8,43 +12,43 @@ export interface OperationDocs {
   tags?: string[]
   deprecated?: true
   /**
-   * Status code to the response a `@throws` tag documents: `@throws {404} User not found`
-   * or `@throws {SmsRejectedException}`, whose class carries the status and the body.
+   * The classes `@throws {SmsRejectedException}` tags name, which carry the status and the body.
    */
-  responses: Record<string, ThrownResponse>
+  throws: ThrowsTag[]
+  /**
+   * `@response {404} reason` describes a status something else documents, and
+   * `@response {502} {UpstreamError}` declares a status and its body.
+   */
+  responses: ResponseTag[]
   /**
    * The type a `@requestBody {TypeName}` tag names.
    */
   requestBody?: ts.Type
   /**
-   * Why a `@throws` or `@requestBody` tag could not be documented.
+   * Why a tag could not be documented.
    */
   problems: Problem[]
 }
 
 export interface Problem {
   code: DiagnosticCode
+  severity: 'error' | 'warning'
   message: string
   fix?: string
   node: ts.Node
 }
 
-export interface ThrownResponse {
-  description: string
-  bodies: ts.Type[]
-  /**
-   * A tag such as `@throws {403}` names a status the app's exception handler renders. Its body is
-   * documented when the action sends none of its own for that status.
-   */
-  rendered: boolean
-  tags: ts.JSDocTag[]
-}
+/**
+ * The symbol of the module a specifier such as `#exceptions/user_disabled_exception` names,
+ * resolved from the file that refers to it.
+ */
+export type ResolveModule = (specifier: string, from: ts.SourceFile) => ts.Symbol | undefined
 
 function jsDoc(node: ts.Node) {
   return ts.getJSDocCommentsAndTags(node).filter(ts.isJSDoc).at(-1)
 }
 
-function tagText(tag: ts.JSDocTag) {
+export function tagText(tag: ts.JSDocTag) {
   return ts.getTextOfJSDocComment(tag.comment)?.trim() ?? ''
 }
 
@@ -60,21 +64,15 @@ function tagsOf(doc: ts.JSDoc | undefined) {
   )
 }
 
-type Thrown = { code: string; bodies: ts.Type[]; rendered?: true }
+export type Thrown = { code: string; bodies: ts.Type[] }
 
-/**
- * The symbol of the module a specifier such as `#exceptions/user_disabled_exception` names,
- * resolved from the file that refers to it.
- */
-export type ResolveModule = (specifier: string, from: ts.SourceFile) => ts.Symbol | undefined
-
-function statusOf(type: ts.Type | undefined) {
+export function statusOf(type: ts.Type | undefined) {
   return type?.isNumberLiteral() && type.value >= 100 && type.value <= 599
     ? String(type.value)
     : undefined
 }
 
-function aliased(checker: ts.TypeChecker, symbol: ts.Symbol) {
+export function aliased(checker: ts.TypeChecker, symbol: ts.Symbol) {
   return symbol.flags & ts.SymbolFlags.Alias ? checker.getAliasedSymbol(symbol) : symbol
 }
 
@@ -83,7 +81,7 @@ function aliased(checker: ts.TypeChecker, symbol: ts.Symbol) {
  * `import('...')` names. The checker leaves those types unbound in a `.ts` file, so the module
  * is resolved by hand.
  */
-function importedSymbol(
+export function importedSymbol(
   checker: ts.TypeChecker,
   resolveModule: ResolveModule,
   specifier: string,
@@ -96,7 +94,7 @@ function importedSymbol(
   )
 }
 
-function qualifiedNames(name: ts.EntityName): string[] {
+export function qualifiedNames(name: ts.EntityName): string[] {
   return ts.isIdentifier(name) ? [name.text] : [...qualifiedNames(name.left), name.right.text]
 }
 
@@ -106,19 +104,33 @@ function property(checker: ts.TypeChecker, type: ts.Type, name: string) {
   return symbol && checker.getTypeOfSymbol(symbol)
 }
 
+export interface ResponseCalls {
+  calls: { name: string; call: ts.CallExpression }[]
+  throws: ts.NewExpression[]
+  /**
+   * Every other call, which an `errors.throwers` key can name.
+   */
+  invoked: ts.CallExpression[]
+}
+
 /**
- * The calls `methods` make on an `HttpResponse` and the exceptions they `throw new`, also inside
- * the functions of the app they call, such as a shared `renderError(ctx, error)`. Functions from
- * packages are not followed.
+ * The calls `roots` make on an `HttpResponse` and the exceptions they `throw new`, also inside the
+ * functions of the app they call, such as a shared `renderError(ctx, error)`. Functions from
+ * packages are not followed, and neither are the nodes in `skip`.
  */
-function responseCalls(checker: ts.TypeChecker, instance: ts.Type, methods = ['handle']) {
-  const calls: { name: string; call: ts.CallExpression }[] = []
-  const throws: ts.NewExpression[] = []
-  const visited = new Set<ts.Node>()
+export function responseCalls(
+  checker: ts.TypeChecker,
+  roots: ts.Node[],
+  skip = new Set<ts.Node>(),
+): ResponseCalls {
+  const found: ResponseCalls = { calls: [], throws: [], invoked: [] }
+  const visited = new Set<ts.Node>(roots)
 
   const visit = (node: ts.Node) => {
+    if (skip.has(node)) return
+
     if (ts.isThrowStatement(node) && node.expression && ts.isNewExpression(node.expression))
-      throws.push(node.expression)
+      found.throws.push(node.expression)
 
     if (ts.isCallExpression(node)) {
       const callee = node.expression
@@ -127,56 +139,72 @@ function responseCalls(checker: ts.TypeChecker, instance: ts.Type, methods = ['h
         ts.isPropertyAccessExpression(callee) && checker.getTypeAtLocation(callee.expression)
 
       if (receiver && receiver.getSymbol()?.name === 'HttpResponse')
-        calls.push({ name: callee.name.text, call: node })
-      else follow(checker.getResolvedSignature(node)?.declaration)
+        found.calls.push({ name: callee.name.text, call: node })
+      else {
+        found.invoked.push(node)
+        follow(checker.getResolvedSignature(node)?.declaration)
+      }
     }
 
     ts.forEachChild(node, visit)
   }
 
   const follow = (declaration: ts.Declaration | undefined) => {
-    const body =
-      declaration &&
-      (ts.isFunctionDeclaration(declaration) ||
-        ts.isMethodDeclaration(declaration) ||
-        ts.isFunctionExpression(declaration) ||
-        ts.isArrowFunction(declaration))
-        ? declaration.body
-        : undefined
+    const body = declaration && bodyOf(declaration)
 
-    const file = declaration?.getSourceFile()
-
-    if (!body || !file || visited.has(body)) return
-
-    if (file.isDeclarationFile || file.fileName.includes('/node_modules/')) return
+    if (!body || visited.has(body)) return
 
     visited.add(body)
     visit(body)
   }
 
-  for (const method of methods)
-    follow(checker.getPropertyOfType(instance, method)?.valueDeclaration)
+  for (const root of roots) visit(root)
 
-  return { calls, throws }
+  return found
 }
 
 /**
- * What `handle()` answers with: a helper such as `response.conflict(body)` carries its status and
- * body, and `response.status(409).send(body)` gives them one call each.
+ * The body of a function or method of the app. Package code is not read.
+ */
+export function bodyOf(declaration: ts.Declaration) {
+  const body =
+    ts.isFunctionDeclaration(declaration) ||
+    ts.isMethodDeclaration(declaration) ||
+    ts.isFunctionExpression(declaration) ||
+    ts.isArrowFunction(declaration)
+      ? declaration.body
+      : undefined
+
+  const file = declaration.getSourceFile()
+
+  return body && !file.isDeclarationFile && !file.fileName.includes('/node_modules/')
+    ? body
+    : undefined
+}
+
+export function methodBodies(checker: ts.TypeChecker, instance: ts.Type, methods: string[]) {
+  return methods.flatMap(method => {
+    const declaration = checker.getPropertyOfType(instance, method)?.valueDeclaration
+
+    return declaration ? (bodyOf(declaration) ?? []) : []
+  })
+}
+
+/**
+ * What an exception answers with by itself: a helper such as `response.conflict(body)` in its
+ * `handle()` carries its status and body, and `response.status(409).send(body)` gives them one
+ * call each.
  *
  * The status of `send()` and `json()` is the type of `static status`, so `422`, `422 as const`, a
  * constant or an enum member all resolve; a plain `static status = 422` widens to `number`, so its
  * initializer is read instead, and without either the `response.status(...)` call gives it. Their
  * body is the return type of `toResponse()` when the class has one.
  */
-function exceptionResponse(
+export function exceptionResponse(
   checker: ts.TypeChecker,
-  constructor: ts.Type,
-  instance: ts.Type,
-  problems: Problem[],
-  node: ts.Node,
+  { constructor, instance }: ExceptionType,
 ): Thrown[] {
-  const { calls } = responseCalls(checker, instance)
+  const { calls } = responseCalls(checker, methodBodies(checker, instance, ['handle']))
 
   const called = (...names: string[]) =>
     calls.filter(({ name }) => names.includes(name)).map(({ call }) => call)
@@ -217,105 +245,25 @@ function exceptionResponse(
         )
 
     if (code) responses.push({ code, bodies })
-    else
-      problems.push({
-        code: 'OA-T006',
-        message: `@throws: ${checker.typeToString(instance)} has no status code`,
-        fix: 'give it a literal `static status`, call `response.status(...)` with one in `handle()` or answer with a helper such as `response.conflict(body)`',
-        node,
-      })
   }
 
   return responses
 }
 
 /**
- * `@throws {404}` parses as a JSDoc type expression holding the literal type `404`,
- * `@throws {SmsRejectedException}` as a reference to the class, and
- * `@throws {AException | BException}` as a union of either.
+ * The type a tag such as `@requestBody {TypeName}` names, which TypeScript does not parse: a name
+ * in scope, or an `import('...').TypeName` to resolve without importing it.
  */
-function thrownResponses(
-  checker: ts.TypeChecker,
-  resolveModule: ResolveModule,
-  type: ts.TypeNode,
-  problems: Problem[],
-): Thrown[] {
-  if (ts.isUnionTypeNode(type))
-    return type.types.flatMap(member => thrownResponses(checker, resolveModule, member, problems))
-
-  if (ts.isLiteralTypeNode(type)) {
-    const code = statusOf(checker.getTypeFromTypeNode(type))
-
-    if (code) return [{ code, bodies: [], rendered: true }]
-
-    problems.push({
-      code: 'OA-T004',
-      message: `@throws: ${type.getText()} is not a status code`,
-      node: type,
-    })
-
-    return []
-  }
-
-  let symbol: ts.Symbol | undefined
-
-  if (ts.isTypeReferenceNode(type)) symbol = checker.getSymbolAtLocation(type.typeName)
-  else if (
-    ts.isImportTypeNode(type) &&
-    ts.isLiteralTypeNode(type.argument) &&
-    ts.isStringLiteral(type.argument.literal)
-  )
-    symbol = importedSymbol(
-      checker,
-      resolveModule,
-      type.argument.literal.text,
-      type.qualifier ? qualifiedNames(type.qualifier) : [],
-      type.getSourceFile(),
-    )
-
-  const target = symbol && aliased(checker, symbol)
-  // A class, or a constant holding one such as the `E_ROW_NOT_FOUND` of `@adonisjs/lucid/errors`.
-  const constructor = target?.declarations?.length ? checker.getTypeOfSymbol(target) : undefined
-  const instance = constructor?.getConstructSignatures()[0]?.getReturnType()
-
-  if (constructor && instance)
-    return exceptionResponse(checker, constructor, instance, problems, type)
-
-  const message = `@throws: ${type.getText()}`
-
-  if (target?.declarations?.length)
-    problems.push({ code: 'OA-T005', message: `${message} is not a class`, node: type })
-  else if (ts.isImportTypeNode(type))
-    problems.push({
-      code: 'OA-T005',
-      message: `${message} does not name an export of a module`,
-      node: type,
-    })
-  else
-    problems.push({
-      code: 'OA-T005',
-      message: `${message} is not in scope`,
-      fix: 'import it in the controller or name it as import(...).Export',
-      node: type,
-    })
-
-  return []
-}
-
-/**
- * `@requestBody {TypeName}` is not a tag TypeScript parses, so its comment holds the name to
- * resolve, or an `import('...').TypeName` to resolve without importing it.
- */
-function requestBodyType(
+export function namedType(
   checker: ts.TypeChecker,
   resolveModule: ResolveModule,
   method: ts.MethodDeclaration,
   tag: ts.JSDocTag,
+  text: string,
   problems: Problem[],
 ) {
-  const text = tagText(tag)
-  const name = /^\{\s*([\w$]+)\s*\}$/.exec(text)?.[1]
-  const imported = /^\{\s*import\(\s*(['"])(.+?)\1\s*\)((?:\.[\w$]+)+)\s*\}$/.exec(text)
+  const name = /^\s*([\w$]+)\s*$/.exec(text)?.[1]
+  const imported = /^\s*import\(\s*(['"])(.+?)\1\s*\)((?:\.[\w$]+)+)\s*$/.exec(text)
 
   const symbol = imported
     ? importedSymbol(
@@ -330,19 +278,25 @@ function requestBodyType(
         .getSymbolsInScope(method, ts.SymbolFlags.Type | ts.SymbolFlags.Alias)
         .find(candidate => candidate.name === name)
 
-  if (symbol) return checker.getDeclaredTypeOfSymbol(aliased(checker, symbol))
+  // The scope holds the local side of an exported type, which has no declared type of its own.
+  if (symbol)
+    return checker.getDeclaredTypeOfSymbol(
+      aliased(checker, checker.getExportSymbolOfSymbol(symbol)),
+    )
 
-  const message = `@requestBody ${text}`
+  const message = `@${tag.tagName.text} {${text}}`
 
   if (imported)
     problems.push({
       code: 'OA-T007',
-      message: `${message}: ${text.slice(1, -1).trim()} does not name an export of a module`,
+      severity: 'warning',
+      message: `${message}: ${text.trim()} does not name an export of a module`,
       node: tag,
     })
   else if (name)
     problems.push({
       code: 'OA-T007',
+      severity: 'warning',
       message: `${message}: ${name} is not in scope`,
       fix: `import it in the controller or name it as import('...').${name}`,
       node: tag,
@@ -350,6 +304,7 @@ function requestBodyType(
   else
     problems.push({
       code: 'OA-T007',
+      severity: 'warning',
       message: `${message}: expected a type name`,
       fix: 'name a type, such as {MailEvent}',
       node: tag,
@@ -365,9 +320,9 @@ export interface Answer {
   code?: string
   body?: ts.Type
   /**
-   * The bytes of a file or a stream, from `download()`, `attachment()` or `stream()`.
+   * The media type of the bytes of a file or a stream, from `download()`, `attachment()` or `stream()`.
    */
-  binary?: true
+  binary?: string
   headers?: string[]
   /**
    * The call or `throw new X()` the answer was read from.
@@ -420,10 +375,11 @@ function answerOf(
     case 'redirect':
       return [{ code: statusOf(typeOf(2)) ?? '302', headers: ['Location'] }]
     case 'stream':
+      return [{ binary: 'application/octet-stream' }]
     case 'download':
-      return [{ binary: true }]
+      return [{ binary: fileType(checker, args[0]) }]
     case 'attachment':
-      return [{ binary: true, headers: ['Content-Disposition'] }]
+      return [{ binary: fileType(checker, args[0]), headers: ['Content-Disposition'] }]
   }
 
   const type = checker.getTypeAtLocation(call)
@@ -433,43 +389,33 @@ function answerOf(
   return code ? [{ code, ...(body && { body }) }] : []
 }
 
-function thrownAnswers(checker: ts.TypeChecker, throws: ts.NewExpression[]): Answer[] {
-  return throws.flatMap(expression => {
-    const constructor = checker.getTypeAtLocation(expression.expression)
-    const instance = checker.getTypeAtLocation(expression)
-
-    const thrown = { node: expression, exception: expression.expression.getText() }
-
-    // A thrown class without a status, such as a plain `Error`, is left to the exception handler.
-    return exceptionResponse(checker, constructor, instance, [], expression).flatMap(
-      ({ code, bodies }) =>
-        bodies.length ? bodies.map(body => ({ ...thrown, code, body })) : [{ ...thrown, code }],
-    )
-  })
+export function answersOf(checker: ts.TypeChecker, calls: ResponseCalls['calls']): Answer[] {
+  return calls.flatMap(({ name, call }) =>
+    answerOf(checker, name, call).map(answer => ({ ...answer, node: call })),
+  )
 }
 
 /**
- * What `methods` of a middleware or exception handler answer with: a helper such as
- * `response.forbidden(body)`, `send()` and `json()`, whose status is the literal of a
- * `response.status(403)` they are chained to, `abort()`, `redirect()`, or an exception they throw.
+ * What `methods` of a middleware answer with: a helper such as `response.forbidden(body)`,
+ * `send()` and `json()`, whose status is the literal of a `response.status(403)` they are chained
+ * to, `abort()`, `redirect()`, and the exceptions they throw.
  */
-export function answers(checker: ts.TypeChecker, instance: ts.Type, methods: string[]): Answer[] {
-  const { calls, throws } = responseCalls(checker, instance, methods)
+export function answers(checker: ts.TypeChecker, instance: ts.Type, methods: string[]) {
+  const { calls, throws } = responseCalls(checker, methodBodies(checker, instance, methods))
 
-  return [
-    ...calls.flatMap(({ name, call }) =>
-      answerOf(checker, name, call).map(answer => ({ ...answer, node: call })),
-    ),
-    ...thrownAnswers(checker, throws),
-  ]
+  return { answers: answersOf(checker, calls), throws }
 }
 
 export interface HandlerResponses {
   answers: Answer[]
   /**
-   * The responses of the exceptions the handler throws, which the headers it sets do not reach.
+   * The exceptions the handler throws, which the headers it sets do not reach.
    */
-  thrown: Answer[]
+  throws: ts.NewExpression[]
+  /**
+   * The calls an `errors.throwers` key can name.
+   */
+  invoked: ts.CallExpression[]
   /**
    * The names of the headers set with a literal name, such as `response.header('Retry-After', ...)`.
    */
@@ -489,13 +435,12 @@ export function handlerResponses(
   controller: ts.Type,
   method: string,
 ): HandlerResponses {
-  const { calls, throws } = responseCalls(checker, controller, [method])
+  const { calls, throws, invoked } = responseCalls(
+    checker,
+    methodBodies(checker, controller, [method]),
+  )
 
-  const handler: HandlerResponses = {
-    answers: [],
-    thrown: thrownAnswers(checker, throws),
-    headers: [],
-  }
+  const handler: HandlerResponses = { answers: [], throws, invoked, headers: [] }
 
   for (const { name, call } of calls) {
     const [first, second] = call.arguments
@@ -521,13 +466,13 @@ export function handlerResponses(
 export function operationDocs(
   checker: ts.TypeChecker,
   resolveModule: ResolveModule,
+  findException: FindException,
   controller: ts.ClassDeclaration,
   method: ts.MethodDeclaration,
 ): OperationDocs {
   const doc = jsDoc(method)
-  const responses: Record<string, ThrownResponse> = {}
-  // Several tags can document one status code, such as two exceptions that answer with a 403.
-  const reasonsByCode = new Map<string, string[]>()
+  const throws: ThrowsTag[] = []
+  const responses: ResponseTag[] = []
   let requestBody: ts.Type | undefined
   const tags = tagsOf(doc) ?? tagsOf(jsDoc(controller))
   let deprecated = false
@@ -539,38 +484,22 @@ export function operationDocs(
     .filter(Boolean)
 
   for (const tag of doc?.tags ?? []) {
+    const name = tag.tagName.text
+
     if (ts.isJSDocThrowsTag(tag)) {
-      const thrownTypes = tag.typeExpression
-        ? thrownResponses(checker, resolveModule, tag.typeExpression.type, problems)
-        : []
+      const thrown = throwsTag(checker, resolveModule, findException, tag, problems)
 
-      const reason = tagText(tag).replace(/\s*\n\s*/g, ' ')
+      if (thrown) throws.push(thrown)
+    } else if (name === 'response') {
+      const response = responseTag(checker, resolveModule, method, tag, problems)
 
-      for (const thrown of thrownTypes) {
-        const reasons = reasonsByCode.get(thrown.code) ?? []
-        reasonsByCode.set(thrown.code, reasons)
-
-        if (reason && !reasons.includes(reason)) reasons.push(reason)
-
-        const response = (responses[thrown.code] ??= {
-          description: '',
-          bodies: [],
-          rendered: false,
-          tags: [],
-        })
-
-        if (!response.tags.includes(tag)) response.tags.push(tag)
-
-        response.description =
-          reasons.join('; ') || (STATUS_CODES[Number(thrown.code)] ?? thrown.code)
-        response.bodies.push(...thrown.bodies)
-
-        if (thrown.rendered) response.rendered = true
-      }
-    } else if (tag.tagName.text === 'requestBody')
-      requestBody = requestBodyType(checker, resolveModule, method, tag, problems)
-    else if (ts.isJSDocDeprecatedTag(tag)) deprecated = true
-    else if (tag.tagName.text === 'remarks' && tagText(tag)) paragraphs.push(tagText(tag))
+      if (response) responses.push(response)
+    } else if (name === 'requestBody') {
+      const text = /^\{(.*)\}$/s.exec(tagText(tag))?.[1] ?? ''
+      requestBody = namedType(checker, resolveModule, method, tag, text, problems)
+    } else if (ts.isJSDocDeprecatedTag(tag)) deprecated = true
+    else if (name === 'remarks' && tagText(tag)) paragraphs.push(tagText(tag))
+    else problems.push(...unknownTag(tag))
   }
 
   return {
@@ -579,6 +508,7 @@ export function operationDocs(
     ...(tags?.length && { tags }),
     ...(deprecated && { deprecated: true }),
     ...(requestBody && { requestBody }),
+    throws,
     responses,
     problems,
   }

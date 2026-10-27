@@ -192,9 +192,15 @@ catalogs:
     '@adonisjs/assembler':
       specifier: ^8.6.0
       version: 8.6.0
+    '@adonisjs/bouncer':
+      specifier: ^4.0.1
+      version: 4.0.1
     '@adonisjs/core':
       specifier: ^7.6.0
       version: 7.6.0
+    '@adonisjs/limiter':
+      specifier: ^3.0.1
+      version: 3.0.1
     '@adonisjs/tsconfig':
       specifier: ^2.0.0
       version: 2.0.0
@@ -207,12 +213,18 @@ catalogs:
     '@poppinss/ts-exec':
       specifier: ^1.4.4
       version: 1.5.1
+    '@types/mime-types':
+      specifier: ^3.0.1
+      version: 3.0.1
     '@types/node':
       specifier: ~26.6.5
       version: 26.6.5
     '@vinejs/vine':
       specifier: ^4.4.0
       version: 4.4.0
+    mime-types:
+      specifier: ^3.0.2
+      version: 3.0.2
     typescript:
       specifier: ~6.0.3
       version: 6.0.3
@@ -266,6 +278,9 @@ importers:
 
   packages/openapi:
     dependencies:
+      mime-types:
+        specifier: 'catalog:'
+        version: 3.0.2
       typescript:
         specifier: 'catalog:'
         version: 6.0.3
@@ -288,6 +303,9 @@ importers:
       '@poppinss/ts-exec':
         specifier: 'catalog:'
         version: 1.5.1
+      '@types/mime-types':
+        specifier: 'catalog:'
+        version: 3.0.1
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.5
@@ -300,12 +318,18 @@ importers:
       '@adonisjs/auth':
         specifier: ^10.1.0
         version: 10.1.0(04b08b4a59f1101fc137b503165d163f)
+      '@adonisjs/bouncer':
+        specifier: 'catalog:'
+        version: 4.0.1(@adonisjs/assembler@8.6.0(typescript@6.0.3))(@adonisjs/core@7.6.0(@adonisjs/assembler@8.6.0(typescript@6.0.3))(@vinejs/vine@4.4.0)(pino-pretty@13.2.0)(supports-color@10.2.2)(youch@4.1.1))
       '@adonisjs/core':
         specifier: 'catalog:'
         version: 7.6.0(@adonisjs/assembler@8.6.0(typescript@6.0.3))(@vinejs/vine@4.4.0)(pino-pretty@13.2.0)(supports-color@10.2.2)(youch@4.1.1)
       '@adonisjs/cors':
         specifier: ^3.0.0
         version: 3.0.0(@adonisjs/assembler@8.6.0(typescript@6.0.3))(@adonisjs/core@7.6.0(@adonisjs/assembler@8.6.0(typescript@6.0.3))(@vinejs/vine@4.4.0)(pino-pretty@13.2.0)(supports-color@10.2.2)(youch@4.1.1))
+      '@adonisjs/limiter':
+        specifier: 'catalog:'
+        version: 3.0.1(@adonisjs/assembler@8.6.0(typescript@6.0.3))(@adonisjs/core@7.6.0(@adonisjs/assembler@8.6.0(typescript@6.0.3))(@vinejs/vine@4.4.0)(pino-pretty@13.2.0)(supports-color@10.2.2)(youch@4.1.1))(@adonisjs/lucid@22.4.2(@adonisjs/assembler@8.6.0(typescript@6.0.3))(@adonisjs/core@7.6.0(@adonisjs/assembler@8.6.0(typescript@6.0.3))(@vinejs/vine@4.4.0)(pino-pretty@13.2.0)(supports-color@10.2.2)(youch@4.1.1))(@vinejs/vine@4.4.0)(better-sqlite3@13.0.3)(luxon@3.7.2)(supports-color@10.2.2))
       '@adonisjs/lucid':
         specifier: ^22.4.2
         version: 22.4.2(@adonisjs/assembler@8.6.0(typescript@6.0.3))(@adonisjs/core@7.6.0(@adonisjs/assembler@8.6.0(typescript@6.0.3))(@vinejs/vine@4.4.0)(pino-pretty@13.2.0)(supports-color@10.2.2)(youch@4.1.1))(@vinejs/vine@4.4.0)(better-sqlite3@13.0.3)(luxon@3.7.2)(supports-color@10.2.2)
@@ -433,6 +457,22 @@ packages:
     peerDependencies:
       '@adonisjs/http-server': ^8.0.0-next.17 || ^8.0.0 || ^9.0.0
 
+  '@adonisjs/bouncer@4.0.1':
+    resolution: {integrity: sha512-YTVlr2apjEHZIDgs09zl2dAMse5xBOCWQ+iY5qYxsZwMRAZcNHaOMjhD6LGjxXKyyM0tFbypgshAWiKuFbI1MA==}
+    engines: {node: '>=24.0.0'}
+    peerDependencies:
+      '@adonisjs/assembler': ^8.0.0-next.26 || ^8.0.0
+      '@adonisjs/core': ^7.0.0-next.16 || ^7.0.0
+      '@adonisjs/i18n': ^3.0.0-next.2 || ^3.0.0
+      edge.js: ^6.4.0
+    peerDependenciesMeta:
+      '@adonisjs/assembler':
+        optional: true
+      '@adonisjs/i18n':
+        optional: true
+      edge.js:
+        optional: true
+
   '@adonisjs/config@6.1.0':
     resolution: {integrity: sha512-YVDRL8xHCtM6iMnAefOBaz6iXVpojwBPDQWPKxnVSucycYeNGrGitJiLy+cGaeAU7Gjm8al9SJRJt3rRPr5PKg==}
     engines: {node: '>=24.0.0'}
@@ -531,6 +571,24 @@ packages:
     engines: {node: '>=24.0.0'}
     peerDependencies:
       '@adonisjs/fold': ^11.0.0-next.2
+
+  '@adonisjs/limiter@3.0.1':
+    resolution: {integrity: sha512-U7drt/FPlB5PV84dnxQQSFGk75fDxgEHSkfT/eGwx/+Z4re7XlkVU4oros/VGefD72JTgXp7Kz97tS1XW7eEXA==}
+    peerDependencies:
+      '@adonisjs/assembler': ^8.0.0-next.9 || ^8.0.0
+      '@adonisjs/core': ^7.0.0-next.1 || ^7.0.0
+      '@adonisjs/i18n': ^3.0.0-next.0 || ^3.0.0
+      '@adonisjs/lucid': ^22.0.0-next.0 || ^22.0.0
+      '@adonisjs/redis': ^10.0.0-next.1 || ^10.0.0
+    peerDependenciesMeta:
+      '@adonisjs/assembler':
+        optional: true
+      '@adonisjs/i18n':
+        optional: true
+      '@adonisjs/lucid':
+        optional: true
+      '@adonisjs/redis':
+        optional: true
 
   '@adonisjs/logger@7.1.1':
     resolution: {integrity: sha512-MmUlp8xBMT6zZy0+vnQcQjHIlNfU4pUJARlINr7Bqha9BvhIn03QZgJL5QJ+kJe1tl6ZpNAryoRTJUiOk/wINQ==}
@@ -1628,6 +1686,9 @@ packages:
 
   '@types/methods@1.1.4':
     resolution: {integrity: sha512-ymXWVrDiCxTBE3+RIrrP533E70eA+9qu7zdWoHuOmGujkYtzf4HQF96b8nwHLqhuf4ykX61IGRIB38CC6/sImQ==}
+
+  '@types/mime-types@3.0.1':
+    resolution: {integrity: sha512-xRMsfuQbnRq1Ef+C+RKaENOxXX87Ygl38W1vDfPHRku02TgQr+Qd8iivLtAMcR0KF5/29xlnFihkTlbqFrGOVQ==}
 
   '@types/node@26.6.5':
     resolution: {integrity: sha512-uMzsv9stDdofIZBx4UGh4Z9ZgXnGC9seRDscilBcTHAeOFk67MZg/k9bWVfO+bk4qZmG+l52hRnLwUiH2LnJTg==}
@@ -3002,6 +3063,9 @@ packages:
     resolution: {integrity: sha512-iv7LhNVO047HzYR3InF6pUcUsPQiHTM1Qal51DcGSuZFBil1aBBWG5eHPNek7bvILMaYJ/8RU1e8w1AMdHmLQQ==}
     engines: {node: '>= 0.8'}
 
+  rate-limiter-flexible@9.1.1:
+    resolution: {integrity: sha512-imxFjzPCmvDLMe7d2tsgiSQvs5EI2fI9SNymmslAfOqznZhsZ+PqbIjIYKpuSbd3pKovR1aMG47qfCLIO/adVg==}
+
   raw-body@3.0.2:
     resolution: {integrity: sha512-K5zQjDllxWkf7Z5xJdV0/B0WTNqx6vxG70zJE4N0kBs4LovmEYWJzQGxC9bS9RAKu3bgM40lrd5zoLJ12MQ5BA==}
     engines: {node: '>= 0.10'}
@@ -3513,6 +3577,13 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
+  '@adonisjs/bouncer@4.0.1(@adonisjs/assembler@8.6.0(typescript@6.0.3))(@adonisjs/core@7.6.0(@adonisjs/assembler@8.6.0(typescript@6.0.3))(@vinejs/vine@4.4.0)(pino-pretty@13.2.0)(supports-color@10.2.2)(youch@4.1.1))':
+    dependencies:
+      '@adonisjs/core': 7.6.0(@adonisjs/assembler@8.6.0(typescript@6.0.3))(@vinejs/vine@4.4.0)(pino-pretty@13.2.0)(supports-color@10.2.2)(youch@4.1.1)
+      '@poppinss/utils': 7.1.2
+    optionalDependencies:
+      '@adonisjs/assembler': 8.6.0(typescript@6.0.3)
+
   '@adonisjs/config@6.1.0':
     dependencies:
       '@poppinss/utils': 7.1.2
@@ -3631,6 +3702,14 @@ snapshots:
       '@adonisjs/fold': 11.1.0
       '@poppinss/exception': 1.2.3
       '@poppinss/types': 1.2.1
+
+  '@adonisjs/limiter@3.0.1(@adonisjs/assembler@8.6.0(typescript@6.0.3))(@adonisjs/core@7.6.0(@adonisjs/assembler@8.6.0(typescript@6.0.3))(@vinejs/vine@4.4.0)(pino-pretty@13.2.0)(supports-color@10.2.2)(youch@4.1.1))(@adonisjs/lucid@22.4.2(@adonisjs/assembler@8.6.0(typescript@6.0.3))(@adonisjs/core@7.6.0(@adonisjs/assembler@8.6.0(typescript@6.0.3))(@vinejs/vine@4.4.0)(pino-pretty@13.2.0)(supports-color@10.2.2)(youch@4.1.1))(@vinejs/vine@4.4.0)(better-sqlite3@13.0.3)(luxon@3.7.2)(supports-color@10.2.2))':
+    dependencies:
+      '@adonisjs/core': 7.6.0(@adonisjs/assembler@8.6.0(typescript@6.0.3))(@vinejs/vine@4.4.0)(pino-pretty@13.2.0)(supports-color@10.2.2)(youch@4.1.1)
+      rate-limiter-flexible: 9.1.1
+    optionalDependencies:
+      '@adonisjs/assembler': 8.6.0(typescript@6.0.3)
+      '@adonisjs/lucid': 22.4.2(@adonisjs/assembler@8.6.0(typescript@6.0.3))(@adonisjs/core@7.6.0(@adonisjs/assembler@8.6.0(typescript@6.0.3))(@vinejs/vine@4.4.0)(pino-pretty@13.2.0)(supports-color@10.2.2)(youch@4.1.1))(@vinejs/vine@4.4.0)(better-sqlite3@13.0.3)(luxon@3.7.2)(supports-color@10.2.2)
 
   '@adonisjs/logger@7.1.1(pino-pretty@13.2.0)':
     dependencies:
@@ -4589,6 +4668,8 @@ snapshots:
   '@types/luxon@3.7.6': {}
 
   '@types/methods@1.1.4': {}
+
+  '@types/mime-types@3.0.1': {}
 
   '@types/node@26.6.5':
     dependencies:
@@ -5901,6 +5982,8 @@ snapshots:
   quick-format-unescaped@4.0.4: {}
 
   random-bytes@1.0.0: {}
+
+  rate-limiter-flexible@9.1.1: {}
 
   raw-body@3.0.2:
     dependencies:

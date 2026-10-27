@@ -42,7 +42,8 @@ export default defineConfig({
   overrides: [
     {
       // The playground is the scaffolded AdonisJS API kit kept close to upstream, so it stays a realistic fixture.
-      files: ['playground/**'],
+      // The fixture apps overlay files on a copy of it.
+      files: ['playground/**', 'packages/openapi/tests/fixtures/*_app/**'],
       rules: Object.fromEntries(
         [
           'anti-slop/require-readable-spacing',

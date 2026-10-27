@@ -58,12 +58,35 @@ export interface OpenApiConfig {
    * Maps a named middleware (as in `middleware.auth()`) to a key of `securitySchemes`.
    */
   middlewareSecurity: Record<string, string>
+  errors: ErrorsConfig
+}
+
+/**
+ * An exception class, or a constant holding one such as the `E_ROW_NOT_FOUND` of `@adonisjs/lucid`.
+ */
+export interface ExceptionClass {
+  new (...args: never[]): Error & { status?: number }
+  status?: number
+}
+
+export interface ErrorsConfig {
   /**
-   * The body of every error response the app answers without a documented one, as a type
-   * expression such as `import('#types/api').ApiError`. Defaults to what the exception handler
-   * sends.
+   * The body of an error the exception handler renders with no branch of its own, as a type
+   * expression such as `import('#types/api').ApiError`. Defaults to what the handler sends.
    */
-  errorResponse?: string
+  body?: string
+  /**
+   * The exception a call throws inside a package, by the method that throws it: `findOrFail`
+   * matches any call of that method, `bouncer.authorize` a call on `bouncer`, also through
+   * `bouncer.with(Policy)`.
+   */
+  throwers?: Record<string, ExceptionClass>
+  /**
+   * The exception a middleware throws inside a package, by its name as `node ace list:routes`
+   * shows it, such as `auth` or the `globalThrottle` of `limiter.define('global')`, or by its
+   * kernel specifier.
+   */
+  middleware?: Record<string, ExceptionClass>
 }
 
 export type HttpMethod = 'get' | 'post' | 'put' | 'patch' | 'delete' | 'options'
@@ -143,10 +166,11 @@ export type ResponseSource = (
   | { kind: 'return' }
   | { kind: 'answer' }
   | { kind: 'throw'; exception: string }
+  | { kind: 'thrower'; call: string; exception: string }
   | { kind: 'middleware'; middleware: string }
   | { kind: 'security'; middleware: string }
   | { kind: 'validator' }
-  | { kind: 'tag'; tag: '@throws' }
+  | { kind: 'tag'; tag: '@throws' | '@response' }
 ) & { location?: SourceLocation }
 
 /**
@@ -155,10 +179,17 @@ export type ResponseSource = (
  * - `OA-R001`: a closure route, skipped.
  * - `OA-R002`: a handler whose return type is unknown.
  * - `OA-V001`: a validator whose JSON Schema cannot be read.
- * - `OA-T004`: a `@throws` literal that is not a status code.
+ * - `OA-T001`: a `@throws` that names a status code or a union instead of one class, or a class without braces.
+ * - `OA-T002`: a `@throws` class name that no exception class of the app has, or several have.
+ * - `OA-T003`: a `@response {N} reason` whose status nothing documents.
+ * - `OA-T004`: a `@response` status that is not a status code.
  * - `OA-T005`: a `@throws` type that does not resolve to a class.
  * - `OA-T006`: an exception with no status code.
- * - `OA-T007`: a `@requestBody` type that does not resolve.
+ * - `OA-T007`: a `@requestBody` or `@response` type that does not resolve, an error for `@response`.
+ * - `OA-T008`: a tag the generator does not read.
+ * - `OA-E001`: an `errors` entry whose exception status cannot be read from its source.
+ * - `OA-E002`: a package exception that renders its own body, which its declaration does not carry.
+ * - `OA-E003`: an `errors.throwers` or `errors.middleware` key that matches nothing in the documented routes.
  * - `OA-J001`: a type with no JSON Schema, emitted as `{}`.
  * - `OA-J002`: a Lucid model, emitted as `{}`.
  */
@@ -166,10 +197,17 @@ export type DiagnosticCode =
   | 'OA-R001'
   | 'OA-R002'
   | 'OA-V001'
+  | 'OA-T001'
+  | 'OA-T002'
+  | 'OA-T003'
   | 'OA-T004'
   | 'OA-T005'
   | 'OA-T006'
   | 'OA-T007'
+  | 'OA-T008'
+  | 'OA-E001'
+  | 'OA-E002'
+  | 'OA-E003'
   | 'OA-J001'
   | 'OA-J002'
 

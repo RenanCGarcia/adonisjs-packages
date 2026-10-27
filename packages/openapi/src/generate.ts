@@ -4,8 +4,10 @@ import ts from 'typescript'
 import type { ApplicationService } from '@adonisjs/core/types'
 import type { Router } from '@adonisjs/core/http'
 import { collectRoutes } from './collect_routes.ts'
-import type { ThrownResponse } from './operation_docs.ts'
+import type { OperationDocs } from './operation_docs.ts'
+import { applicable, underivedResponse } from './response_tag.ts'
 import { RouteTypes } from './route_types.ts'
+import { statuslessException } from './throws_tag.ts'
 import type {
   Diagnostic,
   JsonSchema,
@@ -109,12 +111,12 @@ interface Body {
 
 /**
  * Everything an operation can answer with under one status code. Every source (the return type,
- * the handler's own response calls, `@throws`, the validator, the middleware) adds to it, so
- * branches that share a status code all end up in its body.
+ * the handler's own response calls, the exceptions it throws, the validator, the middleware) adds
+ * to it, so branches that share a status code all end up in its body.
  */
 interface Outcome {
   /**
-   * The descriptions `@throws` tags give, joined into the response description.
+   * The descriptions `@throws` and `@response` tags give, joined into the response description.
    */
   reasons: string[]
   bodies: Body[]
@@ -130,11 +132,6 @@ const EMPTY_STATUSES = new Set(['204', '205', '304'])
 
 const WITHOUT_BODY =
   ts.TypeFlags.Any | ts.TypeFlags.Unknown | ts.TypeFlags.Void | ts.TypeFlags.Undefined
-
-const BINARY: Body = {
-  mediaType: 'application/octet-stream',
-  schema: { type: 'string', format: 'binary' },
-}
 
 /**
  * Bodies with the same schema, such as two exceptions rendered by the same handler, appear once.
@@ -170,7 +167,7 @@ function responsesFor(
   route: RouteOperation,
   types: RouteTypes,
   response: ts.Type | undefined,
-  thrown: Record<string, ThrownResponse>,
+  docs: Pick<OperationDocs, 'throws' | 'responses'>,
   secured: string[],
   diagnostics: Diagnostic[],
 ) {
@@ -216,6 +213,15 @@ function responsesFor(
     for (const header of [...handler.headers, ...headers]) found.headers.add(header)
   }
 
+  // The exceptions an operation throws carry their own body, which the headers it sets do not reach.
+  const thrown = (source: ResponseSource, code: string, bodies: ts.Type[], reason?: string) => {
+    const found = outcome(code)
+    found.sources.push(source)
+    found.bodies.push(...bodies.map(json))
+
+    if (reason && !found.reasons.includes(reason)) found.reasons.push(reason)
+  }
+
   let members: ts.Type[] = []
 
   if (response) members = response.isUnion() ? response.types : [response]
@@ -245,40 +251,29 @@ function responsesFor(
     const payload = body && !(body.flags & WITHOUT_BODY) ? handlerBody(body) : undefined
     const source: ResponseSource = { kind: 'answer', location: types.location(node) }
 
-    answer(source, code, binary ? BINARY : payload, headers)
+    const file = binary && { mediaType: binary, schema: { type: 'string', format: 'binary' } }
+
+    answer(source, code, file || payload, headers)
   }
 
   if (optional && returnsPlain) outcome(plain).optional = true
 
-  for (const { code = plain, body, node, exception = '' } of handler.thrown) {
-    const found = outcome(code)
-    found.sources.push({ kind: 'throw', exception, location: types.location(node) })
-    found.bodies.push(...(body ? [json(body)] : []))
-  }
+  for (const { code = plain, body, node, exception = '' } of types.exceptions.thrownAnswers(
+    handler.throws,
+  ))
+    thrown({ kind: 'throw', exception, location: types.location(node) }, code, body ? [body] : [])
 
-  const typed = outcomes.size > 0
+  for (const { code, bodies, source } of types.errors.throwerResponses(handler.invoked))
+    thrown(source, code, bodies)
 
-  // An error the app answers without a documented body, such as a `@throws {404}` or the 401 of a
-  // secured route, gets the body its exception handler renders.
-  const { byCode, fallback } = types.errorResponses()
+  for (const { exception, reason, tag } of docs.throws) {
+    const responses = types.exceptions.responses(exception)
+    const location = types.location(tag)
 
-  for (const [code, { description, bodies, rendered, tags }] of Object.entries(thrown)) {
-    const found = outcome(code)
-    found.sources.push(
-      ...tags.map((tag): ResponseSource => ({
-        kind: 'tag',
-        tag: '@throws',
-        location: types.location(tag),
-      })),
-    )
+    if (!responses.length) diagnostics.push(statuslessException(route.name, exception, location))
 
-    found.reasons.push(description)
-    found.bodies.push(...bodies.map(json))
-
-    // A tag that describes an exception the action throws already has its body. Middleware bodies
-    // are added later, so they never hide the handler's.
-    if (rendered && !found.bodies.length)
-      found.bodies.push(...(byCode.get(code) ?? fallback).map(json))
+    for (const { code, bodies } of responses)
+      thrown({ kind: 'tag', tag: '@throws', location }, code, bodies, reason)
   }
 
   // The validator's error shares the status code an exception documents, so the body is either.
@@ -290,27 +285,34 @@ function responsesFor(
     found.bodies.push(json(validationError))
   }
 
-  for (const { code, body, node, middleware } of types.middlewareResponses(route)) {
+  for (const { code, body, middleware, location } of types.middlewareResponses(route)) {
     const found = outcome(code)
-    found.sources.push({ kind: 'middleware', middleware, location: types.location(node) })
+    found.sources.push({ kind: 'middleware', middleware, ...(location && { location }) })
     found.bodies.push(...(body ? [json(body)] : []))
   }
 
   if (secured.length) {
-    const auth = types.unauthorizedBody()
-    const unauthorized = byCode.get('401') ?? (auth ? [auth] : [])
     const found = outcome('401')
 
     found.sources.push(
       ...secured.map((middleware): ResponseSource => ({ kind: 'security', middleware })),
     )
-    found.bodies.push(...unauthorized.map(json))
+
+    for (const { code, bodies } of types.unauthorizedResponses())
+      if (code === '401') found.bodies.push(...bodies.map(json))
   }
 
-  for (const [code, found] of outcomes) {
-    if (Number(code) >= 400 && !found.bodies.length)
-      found.bodies.push(...(byCode.get(code) ?? fallback).map(json))
+  const { apply, underived } = applicable(docs.responses, code => outcomes.has(code))
+
+  for (const { code, body, reason, tag } of apply) {
+    const source: ResponseSource = { kind: 'tag', tag: '@response', location: types.location(tag) }
+    thrown(source, code, body ? [body] : [], reason)
   }
+
+  for (const { code, tag } of underived)
+    diagnostics.push(underivedResponse(route.name, code, types.location(tag)))
+
+  const typed = outcomes.size > 0
 
   if (!typed) {
     diagnostics.push({
@@ -366,7 +368,7 @@ export async function generateDocument(
   const diagnostics: Diagnostic[] = []
   const appRoot = fileURLToPath(app.appRoot)
   const routes = await collectRoutes(appRoot, router, config, diagnostics)
-  const types = new RouteTypes(appRoot, routes, config.errorResponse)
+  const types = new RouteTypes(appRoot, routes, config.errors, app.configPath('openapi.ts'))
   const vine = await validatorSchemas(app, routes, diagnostics)
 
   const paths: OpenApiDocument['paths'] = {}
@@ -377,12 +379,11 @@ export async function generateDocument(
     const input = request && mergeSchemas(vine.get(route.name), types.schemas.convert(request))
     const fields = input && pick(input, key => !NOT_IN_BODY.has(key))
 
-    const { responses: thrown, requestBody, problems, ...docs } = types.docs(route)
+    const { throws, responses: tagged, requestBody, problems, ...docs } = types.docs(route)
 
     diagnostics.push(
       ...problems.map(({ node, ...problem }): Diagnostic => ({
         ...problem,
-        severity: 'warning',
         route: route.name,
         location: types.location(node),
       })),
@@ -400,7 +401,7 @@ export async function generateDocument(
       route,
       types,
       response,
-      thrown,
+      { throws, responses: tagged },
       secured,
       diagnostics,
     )
@@ -441,6 +442,8 @@ export async function generateDocument(
       methods[method] = operation
     }
   }
+
+  diagnostics.push(...types.exceptions.diagnostics, ...types.errors.diagnostics)
 
   for (const type of types.schemas.unsupported) {
     diagnostics.push({

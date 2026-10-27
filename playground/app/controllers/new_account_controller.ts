@@ -9,7 +9,8 @@ const DISPOSABLE_DOMAINS = new Set(['mailinator.com', 'yopmail.com'])
 
 export default class NewAccountController {
   /**
-   * @throws {DisposableEmailException | import('#exceptions/email_taken_exception').default}
+   * @throws {DisposableEmailException}
+   * @throws {EmailTakenException}
    */
   async store({ request, response, serialize }: HttpContext) {
     const { fullName, email, password } = await request.validateUsing(signupValidator)

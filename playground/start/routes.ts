@@ -9,6 +9,7 @@
 
 import { middleware } from '#start/kernel'
 import router from '@adonisjs/core/services/router'
+import { throttle } from '#start/limiter'
 import { controllers } from '#generated/controllers'
 import { openapiRoutes } from '@enzopita/adonisjs-openapi/routes'
 
@@ -61,6 +62,8 @@ router
         router.get('aborted', [controllers.Probe, 'aborted'])
         router.get('download', [controllers.Probe, 'download'])
         router.get('attachment', [controllers.Probe, 'attachment'])
+        router.get('report', [controllers.Probe, 'report'])
+        router.get('export', [controllers.Probe, 'exported'])
         router.get('stream', [controllers.Probe, 'stream'])
         router.get('thrown', [controllers.Probe, 'thrown'])
         router
@@ -68,6 +71,16 @@ router
           .as('verified')
           .use(middleware.verifiedEmail())
         router.get('gated', [controllers.Probe, 'gated']).use(middleware.verifiedEmail())
+        router.get('reasoned', [controllers.Probe, 'reasoned']).use(middleware.verifiedEmail())
+        router.get('authorized', [controllers.Probe, 'authorized'])
+        router.get('viewed', [controllers.Probe, 'viewed'])
+        router.get('hidden', [controllers.Probe, 'hidden'])
+        router.get('users/:id', [controllers.Probe, 'found'])
+        router.get('plan', [controllers.Probe, 'plan'])
+        router.get('seats', [controllers.Probe, 'seats'])
+        router.get('maintenance', [controllers.Probe, 'maintenance'])
+        router.get('upstream', [controllers.Probe, 'upstream'])
+        router.get('throttled', [controllers.Probe, 'text']).as('throttled').use(throttle)
         router.get('model', [controllers.Probe, 'model'])
         router.get('collections', [controllers.Probe, 'collections'])
         router.get('search', [controllers.Probe, 'search'])

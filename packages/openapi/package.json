@@ -38,6 +38,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "mime-types": "catalog:",
     "typescript": "catalog:"
   },
   "devDependencies": {
@@ -47,6 +48,7 @@
     "@japa/assert": "catalog:",
     "@japa/runner": "catalog:",
     "@poppinss/ts-exec": "catalog:",
+    "@types/mime-types": "catalog:",
     "@types/node": "catalog:",
     "@vinejs/vine": "catalog:"
   },

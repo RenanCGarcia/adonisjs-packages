@@ -1,6 +1,7 @@
 import { indexEntities } from '@adonisjs/core/generators'
 import { defineConfig } from '@adonisjs/core/app'
 import { generateRegistry } from '@tuyau/core/hooks'
+import { indexPolicies } from '@adonisjs/bouncer'
 
 export default defineConfig({
   /*
@@ -29,6 +30,7 @@ export default defineConfig({
     () => import('@adonisjs/lucid/commands'),
     () => import('@adonisjs/session/commands'),
     () => import('@enzopita/adonisjs-openapi/commands'),
+    () => import('@adonisjs/bouncer/commands'),
   ],
 
   /*
@@ -54,6 +56,8 @@ export default defineConfig({
     () => import('@adonisjs/cors/cors_provider'),
     () => import('@adonisjs/auth/auth_provider'),
     () => import('#providers/api_provider'),
+    () => import('@adonisjs/bouncer/bouncer_provider'),
+    () => import('@adonisjs/limiter/limiter_provider'),
   ],
 
   /*
@@ -117,6 +121,7 @@ export default defineConfig({
         transformers: { enabled: true },
       }),
       generateRegistry(),
+      indexPolicies(),
     ],
     buildStarting: [() => import('@enzopita/adonisjs-openapi/build_hook')],
   },

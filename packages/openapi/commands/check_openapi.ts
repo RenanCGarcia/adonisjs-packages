@@ -44,7 +44,9 @@ export default class CheckOpenApi extends OpenApiCommand {
     'Fail when the committed OpenAPI document differs from the one the app generates'
 
   async run() {
-    const { document, config } = await this.generate()
+    const { document, config, failed } = await this.generate()
+
+    if (failed) return
     const output = resolve(fileURLToPath(this.app.appRoot), config.output)
     const generated = `${JSON.stringify(document, null, 2)}\n`
 

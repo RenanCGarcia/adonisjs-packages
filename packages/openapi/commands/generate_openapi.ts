@@ -15,6 +15,8 @@ function describe(source: ResponseSource) {
       return `a response call in the handler${where}`
     case 'throw':
       return `throw new ${source.exception}()${where}`
+    case 'thrower':
+      return `${source.call}() throws ${source.exception}${where}`
     case 'middleware':
       return `the middleware ${source.middleware}${where}`
     case 'security':
@@ -61,9 +63,11 @@ export default class GenerateOpenApi extends OpenApiCommand {
 
   async run() {
     const startTime = process.hrtime()
-    const { document, provenance, config } = await this.generate()
+    const { document, provenance, config, failed } = await this.generate()
 
     if (this.explain) return this.#explain(this.explain, provenance)
+
+    if (failed) return
 
     const appRoot = fileURLToPath(this.app.appRoot)
     const output = resolve(appRoot, this.output ?? config.output)

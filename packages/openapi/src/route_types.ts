@@ -2,6 +2,9 @@ import ts from 'typescript'
 import { existsSync } from 'node:fs'
 import { join, relative } from 'node:path'
 import { readKernel, type Kernel } from './kernel.ts'
+import { ConfiguredErrors } from './errors_config.ts'
+import { exceptionIndex } from './exception_index.ts'
+import { ExceptionResponses } from './exception_responses.ts'
 import {
   answers,
   handlerResponses,
@@ -10,8 +13,10 @@ import {
   type HandlerResponses,
   type OperationDocs,
 } from './operation_docs.ts'
+import type { FindException } from './throws_tag.ts'
 import { TypeToSchema } from './type_to_schema.ts'
-import type { OpenApiConfig, RouteOperation, SourceLocation } from './types.ts'
+import { unauthorizedException } from './unauthorized.ts'
+import type { ErrorsConfig, RouteOperation, SourceLocation } from './types.ts'
 
 /**
  * The `HttpResponse` helpers that set a status code, as Tuyau types them minus the
@@ -71,13 +76,19 @@ export class RouteTypes {
    */
   #kernelFile: ts.SourceFile
   #answers = new Map<string, Answer[]>()
-  #errorResponses?: { byCode: Map<string, ts.Type[]>; fallback: ts.Type[] }
-  #unauthorizedBody?: ts.Type
+  #findException: FindException
+  #unauthorized: ReturnType<typeof unauthorizedException>['exception']
+  readonly exceptions: ExceptionResponses
+  readonly errors: ConfiguredErrors
 
+  /**
+   * `configFile` is `config/openapi.ts`, whose type names the classes of `errors` when it exists.
+   */
   constructor(
     appRoot: string,
     routes: RouteOperation[],
-    errorResponse: OpenApiConfig['errorResponse'],
+    errors: ErrorsConfig,
+    configFile?: string,
   ) {
     const entryFile = join(appRoot, '.adonisjs/openapi/routes.ts')
     const dataFile = join(appRoot, '.adonisjs/client/data.d.ts')
@@ -95,7 +106,14 @@ export class RouteTypes {
 
     if (!config) throw new Error(`openapi: cannot read ${join(appRoot, 'tsconfig.json')}`)
 
-    const source = renderEntry(entryFile, appRoot, routes, errorResponse)
+    const source = renderEntry(
+      entryFile,
+      appRoot,
+      routes,
+      errors.body,
+      configFile && existsSync(configFile) ? configFile : undefined,
+    )
+
     const host = ts.createCompilerHost(config.options)
     const getSourceFile = host.getSourceFile.bind(host)
     host.getSourceFile = (fileName, languageVersion, ...rest) =>
@@ -115,6 +133,7 @@ export class RouteTypes {
     this.#program = program
     this.#appRoot = appRoot
     this.checker = program.getTypeChecker()
+    this.#findException = exceptionIndex(program, this.checker, appRoot)
 
     const entry = program.getSourceFile(entryFile)!
     this.#routes = entry.statements.find(ts.isInterfaceDeclaration)!
@@ -128,29 +147,40 @@ export class RouteTypes {
     this.#kernelFile = kernelFile ?? entry
     this.#kernel = readKernel(kernelFile)
 
-    const auth = ts.resolveModuleName(
-      '@adonisjs/auth',
-      this.#kernelFile.fileName,
-      config.options,
-      ts.sys,
+    const configType = aliases.find(alias => alias.name.text === 'Config')
+
+    const unauthorized = unauthorizedException(program, this.checker, this.#kernelFile, {
+      options: config.options,
+      body: this.checker.getTypeAtLocation(
+        aliases.find(({ name }) => name.text === 'UnauthorizedBody')!,
+      ),
+    })
+
+    this.#unauthorized = unauthorized.exception
+
+    this.exceptions = ExceptionResponses.read(
+      this.checker,
+      this.#defaultInstance(this.#kernel.errorHandler ?? '#exceptions/handler'),
+      this.#errorBody,
+      errors.body !== undefined,
+      unauthorized.packaged,
     )
-
-    if (!errorResponse && auth.resolvedModule)
-      this.#unauthorizedBody = this.checker.getTypeAtLocation(
-        aliases.find(alias => alias.name.text === 'UnauthorizedBody')!,
-      )
-
-    // The config names the error body, so the exception handler is not read.
-    if (errorResponse) this.#errorResponses = { byCode: new Map(), fallback: [this.#errorBody] }
+    this.errors = new ConfiguredErrors(
+      this.checker,
+      errors,
+      configType && this.checker.getTypeAtLocation(configType),
+      this.exceptions,
+      node => this.location(node),
+    )
 
     const validationError = this.validationError()
     const named = new Map(this.#transformerTypes(program.getSourceFile(dataFile)))
 
     if (validationError) named.set(validationError, 'ValidationError')
 
-    const { fallback } = this.errorResponses()
+    const { generic } = this.exceptions
 
-    if (fallback.length === 1) named.set(fallback[0]!, 'Error')
+    if (generic.length === 1) named.set(generic[0]!, 'Error')
 
     this.schemas = new TypeToSchema(this.checker, named)
   }
@@ -235,12 +265,13 @@ export class RouteTypes {
       : undefined
   }
 
-  #answersOf(specifier: string, methods: string[]) {
+  #answersOf(specifier: string) {
     let found = this.#answers.get(specifier)
 
     if (!found) {
       const instance = this.#defaultInstance(specifier)
-      found = instance ? answers(this.checker, instance, methods) : []
+      const read = instance && answers(this.checker, instance, ['handle'])
+      found = read ? [...read.answers, ...this.exceptions.thrownAnswers(read.throws)] : []
       this.#answers.set(specifier, found)
     }
 
@@ -248,37 +279,9 @@ export class RouteTypes {
   }
 
   /**
-   * The error bodies the app sends: the ones the config names, else what the exception handler
-   * `start/kernel.ts` registers answers with, else the `{ message }` the framework's handler sends.
-   * `byCode` holds the bodies of a status the handler answers with explicitly, such as the
-   * `response.tooManyRequests(...)` it returns for `E_TOO_MANY_REQUESTS`.
-   */
-  errorResponses() {
-    if (this.#errorResponses) return this.#errorResponses
-
-    const handler = this.#answersOf(this.#kernel.errorHandler ?? '#exceptions/handler', [
-      'handle',
-      'renderErrorAsJSON',
-    ])
-
-    const byCode = new Map<string, ts.Type[]>()
-    const fallback: ts.Type[] = []
-
-    for (const { code, body } of handler) {
-      if (!body) continue
-
-      if (code) byCode.set(code, [...(byCode.get(code) ?? []), body])
-      else fallback.push(body)
-    }
-
-    this.#errorResponses = { byCode, fallback: fallback.length ? fallback : [this.#errorBody] }
-
-    return this.#errorResponses
-  }
-
-  /**
    * What the route's middleware answer with when they stop the request, such as the `400` of
-   * `response.badRequest(...)` in a tenant middleware. Only answers with a status are kept.
+   * `response.badRequest(...)` in a tenant middleware, and what the package middleware an
+   * `errors.middleware` key names throw. Only answers with a status are kept.
    */
   middlewareResponses(route: RouteOperation) {
     const specifiers = [
@@ -286,11 +289,18 @@ export class RouteTypes {
       ...route.middleware.flatMap(name => this.#kernel.named.get(name) ?? []),
     ]
 
-    return specifiers.flatMap(specifier =>
-      this.#answersOf(specifier, ['handle']).flatMap(answer =>
-        answer.code === undefined ? [] : [{ ...answer, code: answer.code, middleware: specifier }],
+    const read = specifiers.flatMap(specifier =>
+      this.#answersOf(specifier).flatMap(({ code, body, node }) =>
+        code === undefined
+          ? []
+          : [{ code, body, middleware: specifier, location: this.location(node) }],
       ),
     )
+
+    return [
+      ...read,
+      ...this.errors.middlewareResponses(new Set([...specifiers, ...route.middleware])),
+    ]
   }
 
   location(node: ts.Node): SourceLocation {
@@ -340,8 +350,14 @@ export class RouteTypes {
     const handler = this.#handler(route)
 
     return handler
-      ? operationDocs(this.checker, this.#resolveModule, handler.declaration, handler.method)
-      : { responses: {}, problems: [] }
+      ? operationDocs(
+          this.checker,
+          this.#resolveModule,
+          this.#findException,
+          handler.declaration,
+          handler.method,
+        )
+      : { throws: [], responses: [], problems: [] }
   }
 
   /**
@@ -356,15 +372,15 @@ export class RouteTypes {
           this.checker.getDeclaredTypeOfSymbol(handler.symbol),
           handler.method.name.getText(),
         )
-      : { answers: [], thrown: [], headers: [] }
+      : { answers: [], throws: [], invoked: [], headers: [] }
   }
 
   /**
-   * `E_UNAUTHORIZED_ACCESS` from `@adonisjs/auth` renders its own body through its `handle()`,
-   * which a declaration file does not carry: this is what it sends to a client that accepts JSON.
+   * The `401` of a secured route: what `E_UNAUTHORIZED_ACCESS` from `@adonisjs/auth` renders, through
+   * a branch of the exception handler like any other exception.
    */
-  unauthorizedBody() {
-    return this.#unauthorizedBody
+  unauthorizedResponses() {
+    return this.#unauthorized ? this.exceptions.responses(this.#unauthorized, '401') : []
   }
 
   property(type: ts.Type, name: string) {
@@ -378,7 +394,8 @@ function renderEntry(
   entryFile: string,
   appRoot: string,
   routes: RouteOperation[],
-  errorResponse: OpenApiConfig['errorResponse'],
+  errorBody: string | undefined,
+  configFile: string | undefined,
 ) {
   const toRelative = (expression: string) =>
     expression.replace(/import\('(app\/[^']+?)(\.ts)?'\)/g, (_, path: string) => {
@@ -419,8 +436,11 @@ function renderEntry(
   return [
     ...imports,
     validationError,
-    `export type ErrorBody = ${errorResponse ? toRelative(errorResponse) : '{ message: string }'}`,
+    `export type ErrorBody = ${errorBody ? toRelative(errorBody) : '{ message: string }'}`,
     'export type UnauthorizedBody = { errors: { message: string }[] }',
+    configFile
+      ? `export type Config = typeof import('${relative(join(entryFile, '..'), configFile).replace(/\.ts$/, '.js')}').default`
+      : '',
     augmentation,
     `export interface Routes {\n${members.join('\n')}\n}`,
   ].join('\n')

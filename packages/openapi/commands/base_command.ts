@@ -24,7 +24,14 @@ export abstract class OpenApiCommand extends BaseCommand {
 
     for (const diagnostic of generated.diagnostics) this.#report(diagnostic)
 
-    return { ...generated, config }
+    const failed = generated.diagnostics.some(({ severity }) => severity === 'error')
+
+    if (failed) {
+      this.logger.error('The errors above block the document')
+      this.exitCode = 1
+    }
+
+    return { ...generated, config, failed }
   }
 
   #report({ code, severity, route, message, fix, location }: Diagnostic) {
