@@ -21,8 +21,6 @@ export class MiddlewareResponses {
   #instanceOf: (specifier: string) => ts.Type | undefined
   #exceptions: ExceptionResponses
   #errors: ConfiguredErrors
-  #locate: (node: ts.Node) => SourceLocation
-  #findInline: (middleware: InlineMiddleware) => InlineMatch
   #answers = new Map<string, Answer[]>()
 
   constructor(
@@ -31,16 +29,12 @@ export class MiddlewareResponses {
     instanceOf: (specifier: string) => ts.Type | undefined,
     exceptions: ExceptionResponses,
     errors: ConfiguredErrors,
-    locate: (node: ts.Node) => SourceLocation,
-    findInline: (middleware: InlineMiddleware) => InlineMatch,
   ) {
     this.#checker = checker
     this.#kernel = kernel
     this.#instanceOf = instanceOf
     this.#exceptions = exceptions
     this.#errors = errors
-    this.#locate = locate
-    this.#findInline = findInline
   }
 
   /**
@@ -79,7 +73,11 @@ export class MiddlewareResponses {
    * The answers of the route's middleware, and a diagnostic for each function passed to `.use()`
    * whose answers cannot be read.
    */
-  of(route: RouteOperation) {
+  of(
+    route: RouteOperation,
+    locate: (node: ts.Node) => SourceLocation,
+    findInline: (middleware: InlineMiddleware) => InlineMatch,
+  ) {
     const specifiers = [
       ...this.#kernel.global,
       ...route.middleware.flatMap(name => this.#kernel.named.get(name) ?? []),
@@ -88,7 +86,7 @@ export class MiddlewareResponses {
     const diagnostics: Diagnostic[] = []
 
     const inline = route.inlineMiddleware.flatMap(({ name, ...runtime }) => {
-      const match = this.#findInline(runtime)
+      const match = findInline(runtime)
 
       if (match.kind === 'found') return [{ middleware: name, answers: this.#read([match.body]) }]
 
@@ -97,7 +95,7 @@ export class MiddlewareResponses {
       diagnostics.push(
         match.kind === 'missing'
           ? unmatchedInlineMiddleware(route.name, name)
-          : ambiguousInlineMiddleware(route.name, name, match.candidates.map(this.#locate)),
+          : ambiguousInlineMiddleware(route.name, name, match.candidates.map(locate)),
       )
 
       return []
@@ -111,7 +109,7 @@ export class MiddlewareResponses {
       ...inline,
     ].flatMap(({ middleware, answers }) =>
       answers.flatMap(({ code, body, node, owner }) =>
-        code === undefined ? [] : [{ code, body, middleware, owner, location: this.#locate(node) }],
+        code === undefined ? [] : [{ code, body, middleware, owner, location: locate(node) }],
       ),
     )
 

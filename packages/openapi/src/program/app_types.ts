@@ -36,7 +36,7 @@ export interface AppTypes {
   locate: (node: ts.Node) => SourceLocation
   routeTypes: (routeName: string) => { request?: ts.Type; response?: ts.Type }
   handler: (route: RouteOperation) => ControllerHandler | undefined
-  middlewareResponses: MiddlewareResponses['of']
+  middlewareResponses: (route: RouteOperation) => ReturnType<MiddlewareResponses['of']>
   /**
    * The `401` of a secured route: what `E_UNAUTHORIZED_ACCESS` from `@adonisjs/auth` renders, through
    * a branch of the exception handler like any other exception.
@@ -109,17 +109,11 @@ export function readApp(
 
   if (exceptions.generic.length === 1) named.set(exceptions.generic[0]!, 'Error')
 
-  const middleware = new MiddlewareResponses(
-    checker,
-    kernel,
-    instanceOf,
-    exceptions,
-    configured,
-    locate,
-    inlineMiddleware(
-      program,
-      routes.flatMap(route => route.inlineMiddleware),
-    ),
+  const middleware = new MiddlewareResponses(checker, kernel, instanceOf, exceptions, configured)
+
+  const findInline = inlineMiddleware(
+    program,
+    routes.flatMap(route => route.inlineMiddleware),
   )
 
   return {
@@ -153,7 +147,7 @@ export function readApp(
       }
     },
     handler: route => controllerHandler(program, checker, route),
-    middlewareResponses: route => middleware.of(route),
+    middlewareResponses: route => middleware.of(route, locate, findInline),
     unauthorizedResponses: () =>
       unauthorized.exception ? exceptions.responses(unauthorized.exception, '401') : [],
   }
