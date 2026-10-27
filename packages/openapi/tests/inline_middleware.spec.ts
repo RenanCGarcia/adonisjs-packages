@@ -1,4 +1,4 @@
-import { cp, readFile } from 'node:fs/promises'
+import { cp, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { test } from '@japa/runner'
@@ -64,4 +64,22 @@ test.group('openapi:generate on functions passed to .use()', group => {
     )
     assert.deepEqual(Object.keys(responses('method')), ['200'])
   })
+})
+
+test('reports a function several functions of the app match although errors.middleware names it', async ({
+  assert,
+}) => {
+  const { output } = await generateInCopy(async copy => {
+    await cp(fileURLToPath(inlineApp), copy, { recursive: true })
+    const config = join(copy, 'config/openapi.ts')
+    await writeFile(
+      config,
+      (await readFile(config, 'utf8')).replace(
+        'globalThrottle: limiterErrors.E_TOO_MANY_REQUESTS,',
+        'globalThrottle: limiterErrors.E_TOO_MANY_REQUESTS,\n      reject: limiterErrors.E_TOO_MANY_REQUESTS,',
+      ),
+    )
+  })
+
+  assert.include(output, 'OA-R004 inline.taken: the middleware reject passed to .use()')
 })

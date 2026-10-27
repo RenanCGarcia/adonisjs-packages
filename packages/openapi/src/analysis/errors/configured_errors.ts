@@ -124,6 +124,10 @@ export class ConfiguredErrors {
     )
   }
 
+  namesMiddleware(name: string) {
+    return this.#entriesOf('middleware').some(({ key }) => key === name)
+  }
+
   /**
    * What the middleware an `errors.middleware` key names throw, for a route whose middleware go by
    * `names`: their names, as `node ace list:routes` shows them, and their kernel specifiers.

@@ -72,6 +72,7 @@ test.group('openapi:generate --explain', () => {
       'bouncer.authorize() throws E_AUTHORIZATION_FAILURE (app/controllers/probe_controller.ts:',
     )
     assert.include(throttled.stdout, 'the middleware globalThrottle (config/openapi.ts:')
+    assert.notInclude(`${throttled.stdout}${throttled.stderr}`, 'OA-R003 probe.throttled')
   })
 
   test('names a function passed to .use() as closure', async ({ assert }) => {

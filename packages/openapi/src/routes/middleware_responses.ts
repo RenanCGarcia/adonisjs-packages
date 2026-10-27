@@ -87,6 +87,8 @@ export class MiddlewareResponses {
 
       if (match.kind === 'found') return [{ middleware: name, answers: this.#read([match.body]) }]
 
+      if (match.kind === 'missing' && this.#errors.namesMiddleware(name)) return []
+
       diagnostics.push(
         match.kind === 'missing'
           ? unmatchedInlineMiddleware(route.name, name)
