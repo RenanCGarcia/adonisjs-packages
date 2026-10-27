@@ -45,6 +45,7 @@ export type ResponseSource = (
  * - `OA-S002`: a tag that `document.tags` does not declare.
  * - `OA-S003`: a summary longer than `rules.summaryMaxLength`.
  * - `OA-S004`: a summary whose trailing period breaks `rules.summaryTrailingPeriod`.
+ * - `OA-O001`: an `operationId` that two operations share.
  * - `OA-J001`: a type with no JSON Schema, emitted as `{}`.
  * - `OA-J002`: a Lucid model, emitted as `{}`.
  */
@@ -69,6 +70,7 @@ export type DiagnosticCode =
   | 'OA-S002'
   | 'OA-S003'
   | 'OA-S004'
+  | 'OA-O001'
   | 'OA-J001'
   | 'OA-J002'
 

@@ -2,11 +2,13 @@ import { fileURLToPath } from 'node:url'
 import type { ApplicationService } from '@adonisjs/core/types'
 import type { Router } from '@adonisjs/core/http'
 import { operationDocs, type OperationDocs } from '../analysis/tags/operation_docs.ts'
+import { duplicateOperationId } from '../diagnostics/operation.ts'
 import { lucidModel, noJsonSchema } from '../diagnostics/route.ts'
 import { readApp } from '../program/app_types.ts'
 import { collectRoutes } from '../routes/collect_routes.ts'
 import type { Diagnostic, GeneratedDocument, OpenApiConfig, OpenApiDocument } from '../types.ts'
 import { operationFor } from './operation.ts'
+import { operationIdFor } from './operation_id.ts'
 import { operationRules } from './operation_rules.ts'
 import { ResponseComponents } from './response_components.ts'
 import { responsesFor } from './responses/responses.ts'
@@ -29,6 +31,7 @@ export async function generateDocument(
   const paths: OpenApiDocument['paths'] = {}
   const provenance: GeneratedDocument['provenance'] = {}
   const components = new ResponseComponents(appRoot)
+  const operationIds = new Map<string, string>()
 
   // A route with an optional param has a path without it too, which shares everything else.
   for (const [name, variants] of Map.groupBy(routes, route => route.name)) {
@@ -65,8 +68,16 @@ export async function generateDocument(
       const methods = paths[variant.path] ?? {}
       paths[variant.path] = methods
 
-      for (const method of variant.methods)
+      for (const method of variant.methods) {
+        const operationId = operationIdFor(variant, method, config.operationId)
+        const first = operationIds.get(operationId)
+
+        if (first === undefined)
+          operationIds.set(operationId, `${method.toUpperCase()} ${variant.path}`)
+        else diagnostics.push(duplicateOperationId(name, operationId, first))
+
         methods[method] = operationFor(variant, method, types, {
+          operationId,
           meta: docs.meta,
           requestBody: docs.requestBody,
           input,
@@ -74,6 +85,7 @@ export async function generateDocument(
           responses,
           security,
         })
+      }
     }
   }
 

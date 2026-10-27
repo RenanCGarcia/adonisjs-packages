@@ -12,6 +12,7 @@ export interface OperationParts {
   fields?: JsonSchema
   responses: OpenApiOperation['responses']
   security: Record<string, string[]>[]
+  operationId: string
 }
 
 /**
@@ -22,7 +23,7 @@ export function operationFor(
   route: RouteOperation,
   method: HttpMethod,
   app: AppTypes,
-  { meta, requestBody, input, fields, responses, security }: OperationParts,
+  { meta, requestBody, input, fields, responses, security, operationId }: OperationParts,
 ): OpenApiOperation {
   const readsQueryOnly = method === 'get' || method === 'options'
   const validated = readsQueryOnly ? undefined : fields
@@ -35,7 +36,7 @@ export function operationFor(
   )
 
   const operation: OpenApiOperation = {
-    operationId: route.methods.length > 1 ? `${route.operationId}.${method}` : route.operationId,
+    operationId,
     ...meta,
     responses,
   }

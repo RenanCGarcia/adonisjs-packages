@@ -49,6 +49,11 @@ export interface OpenApiConfig {
    */
   strict: boolean
   rules: RulesConfig
+  /**
+   * Replaces the `operationId` of every operation. Called once per method of each documented path
+   * (`name` is the route name, `path` the OpenAPI path), and must return a unique id.
+   */
+  operationId?: (route: { name: string; method: string; path: string }) => string
 }
 
 /**

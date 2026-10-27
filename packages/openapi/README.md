@@ -137,6 +137,25 @@ Every key is optional. `defineConfig()` throws when the config sets a 0.x key, s
 | `errors`              | `{}`                                 | The exceptions thrown inside packages, and the error body. See [Errors config](#errors-config).                                                                                      |
 | `strict`              | `false`                              | Makes every warning an error in `openapi:generate` and `openapi:check`. The `--strict` and `--no-strict` flags override it. The build hook and `--explain` ignore it.                |
 | `rules`               | `{}`                                 | `summaryMaxLength` warns about a longer summary (`OA-S003`). `summaryTrailingPeriod: true` warns about a summary without a final period, `false` about one with it (`OA-S004`).      |
+| `operationId`         | not set                              | A function that replaces the `operationId` of every operation. See [Operation ids](#operation-ids).                                                                                  |
+
+### Operation ids
+
+Client generators such as orval name their functions after `operationId`, so the rule that builds it is part of the contract. The default rule is stable and changes only in a major release:
+
+- The id is the route name, such as `users.show`.
+- The path without an optional parameter adds `.without_<param>`, such as `users.show.without_id`.
+- A route that answers several methods adds `.<method>` last, such as `probe.echo.get` and `probe.echo.post`.
+
+To choose the ids yourself, set `operationId`. It replaces the whole rule, and the generator calls it once for each method of each path, with the route `name`, the lowercase `method`, and the OpenAPI `path`, such as `/users/{id}`:
+
+```ts
+export default defineConfig({
+  operationId: ({ name, method }) => `${name}.${method}`,
+})
+```
+
+Two operations with the same id fail generation with `OA-O001`, which names the first one. An empty id throws.
 
 ### Security
 
@@ -374,7 +393,7 @@ When `.adonisjs/client/data.d.ts` exists, every type in its `Data` namespace bec
 - A validator field named `query` is a field like any other, which the app reads from `?query[page]=2` or from the body. It does not document `?page=2`.
 - An object query parameter uses `style: deepObject`, as the app reads `filter[status]=x`. The app reads an array only from a repeated key, `?tags=a&tags=b`.
 - A field is required unless it is `.optional()`. A `.nullable()` field is required, with `null` in its type.
-- An optional path parameter, `/users/:id?`, documents both `/users` and `/users/{id}`. The shorter path's `operationId` ends with `.without_id`.
+- An optional path parameter, `/users/:id?`, documents both `/users` and `/users/{id}`. The shorter path's `operationId` ends with `.without_id`, see [Operation ids](#operation-ids).
 - A `HEAD`-only route is left out.
 - A body with a `vine.file()` field is sent as `multipart/form-data`.
 - When VineJS cannot describe a field (a file, a custom rule), the generator uses the field's TypeScript type.
@@ -408,6 +427,7 @@ Codes keep their meaning across releases. An `error` fails `openapi:generate` an
 | `OA-S002` | warning                                           | An OpenAPI tag that `document.tags` does not declare.                                                                             | Declare it in `document.tags`.                                                                                                                  |
 | `OA-S003` | warning                                           | A summary longer than `rules.summaryMaxLength`.                                                                                   | Shorten the first paragraph of the comment.                                                                                                     |
 | `OA-S004` | warning                                           | A summary whose final period breaks `rules.summaryTrailingPeriod`.                                                                | Add or remove the period.                                                                                                                       |
+| `OA-O001` | error                                             | An `operationId` that two operations share. It names the first one.                                                               | Return a different id from `operationId`, or rename the route.                                                                                  |
 | `OA-J001` | warning                                           | A type with no JSON Schema, emitted as `{}`.                                                                                      | Return a plain data type.                                                                                                                       |
 | `OA-J002` | warning                                           | A Lucid model returned directly, emitted as `{}`.                                                                                 | Return it through a transformer.                                                                                                                |
 

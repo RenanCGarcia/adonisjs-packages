@@ -47,3 +47,13 @@ export function summaryPeriod(
     ...(location && { location }),
   }
 }
+
+export function duplicateOperationId(route: string, id: string, first: string): Diagnostic {
+  return {
+    code: 'OA-O001',
+    severity: 'error',
+    route,
+    message: `the operationId ${id} is already the one of ${first}`,
+    fix: 'return a different id from `operationId` in config/openapi.ts, or rename the route',
+  }
+}
