@@ -167,3 +167,13 @@ export function tagNotRead(location: SourceLocation, name: string, fix: string):
     location,
   }
 }
+
+export function exampleInvalid(location: SourceLocation, written: string, why: string): Diagnostic {
+  return {
+    code: 'OA-T009',
+    severity: 'warning',
+    message: `${written}: ${why}`,
+    fix: 'name a const whose initializer is JSON, such as `@example {200} userExample`',
+    location,
+  }
+}

@@ -203,7 +203,7 @@ export default class UsersController {
 
 The first paragraph is the `summary`. The next paragraphs and `@remarks` are the `description`.
 
-A doc tag is an `@` line of the doc comment, such as `@response {404} User not found`. The generator reads six doc tags, and each form of a doc tag has one meaning. `@response` has two forms, told apart by what follows the status code: a reason alone describes a response the generator documents, and a `{Type}` declares a response with that body.
+A doc tag is an `@` line of the doc comment, such as `@response {404} User not found`. The generator reads seven doc tags, and each form of a doc tag has one meaning. `@response` has two forms, told apart by what follows the status code: a reason alone describes a response the generator documents, and a `{Type}` declares a response with that body.
 
 | Doc tag form                      | Meaning                                                                                                                                                                          |
 | --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -212,6 +212,7 @@ A doc tag is an `@` line of the doc comment, such as `@response {404} User not f
 | `@response {502} {Type} [reason]` | Declares a status and its body that nothing can derive, such as an upstream error the handler relays.                                                                            |
 | `@throws {Class} [reason]`        | Adds the status and the body of an exception class, which the reason describes for this operation. See [Exception responses](#exception-responses).                              |
 | `@requestBody {Type}`             | The request body schema, for a handler that reads the body without a validator, such as a webhook. It replaces the body the validator would document.                            |
+| `@example {200} name`             | The example of the body of a status the operation documents. `name` is a `const` in scope whose initializer is JSON, or `import('#examples/users').card`.                        |
 | `@deprecated`                     | Marks the operation as deprecated.                                                                                                                                               |
 | `@remarks`                        | Adds a paragraph to the `description`.                                                                                                                                           |
 
@@ -222,7 +223,8 @@ Prefer what the generator derives over a doc tag. An exception the action throws
 - `@throws {404}`, `@throws {A | B}` and a tag without braces, such as `@throws EmailTakenException`, fail generation with `OA-T001`, which names the fix.
 - The reason of a doc tag replaces the description for that operation. When several doc tags document one status code, their reasons are joined with `; `.
 - An operation without `@tags` has no OpenAPI tags and gets `OA-S001`.
-- A doc tag the generator does not read, such as a misspelled `@reponse`, gets `OA-T008`. Standard doc tags for the readers of the code are ignored without one: `@param`, `@returns`, `@return`, `@see`, `@example`, `@since`, `@internal`, `@todo`, `@override`, `@inheritDoc`, `@author`, `@version`, `@alpha`, `@beta`, `@experimental`, `@public`, `@private` and `@protected`. `@summary`, `@description` and `@exception` get the warning, with where their content goes instead.
+- An `@example {N}` whose value is not in scope, is not a `const` holding JSON, or names a status without a body gets `OA-T009`.
+- A doc tag the generator does not read, such as a misspelled `@reponse`, gets `OA-T008`. Standard doc tags for the readers of the code are ignored without one: `@param`, `@returns`, `@return`, `@see`, `@example` without a status, `@since`, `@internal`, `@todo`, `@override`, `@inheritDoc`, `@author`, `@version`, `@alpha`, `@beta`, `@experimental`, `@public`, `@private` and `@protected`. `@summary`, `@description` and `@exception` get the warning, with where their content goes instead.
 
 ## Describe a response once
 
@@ -399,6 +401,7 @@ When `.adonisjs/client/data.d.ts` exists, every type in its `Data` namespace bec
 - A `HEAD`-only route is left out.
 - A body with a `vine.file()` field is sent as `multipart/form-data`.
 - When VineJS cannot describe a field (a file, a custom rule), the generator uses the field's TypeScript type.
+- The doc comment of a property, in a transformer's `toObject()` or a returned type, documents its schema. The text is the `description`, each `@example` adds to `examples`, `@default` is the `default` and `@deprecated` sets `deprecated: true`. A tag value that is not JSON, such as `@example Jane Doe`, is kept as a string.
 - `Date` and Luxon `DateTime` values become `{ type: 'string', format: 'date-time' }`.
 - `Map` and `Set` become an empty object and `bigint` a string, as they serialize. Symbol keys and properties typed `undefined` are left out.
 - A Lucid model returned directly becomes `{}` with `OA-J002`, because its type does not describe what `serialize()` sends. Return it through a transformer.
@@ -422,6 +425,7 @@ Codes keep their meaning across releases. An `error` fails `openapi:generate` an
 | `OA-T006` | warning                                           | A `@throws` class with no status code.                                                                                            | Give it a literal `static status`, or answer with a helper such as `response.conflict(body)` in its `handle()`.                                 |
 | `OA-T007` | error for `@response`, warning for `@requestBody` | A type that does not resolve, or an inline object type.                                                                           | Declare it as a named type in scope, or name it as `import('...').Type`.                                                                        |
 | `OA-T008` | warning                                           | A doc tag the generator does not read, such as `@reponse`.                                                                        | Use `@throws`, `@response`, `@requestBody`, `@tags`, `@deprecated` or `@remarks`.                                                               |
+| `OA-T009` | warning                                           | An `@example {N}` whose value does not resolve to a `const` holding JSON, or whose status has no body.                            | Name a `const` whose initializer is JSON, and a status whose response has a body.                                                               |
 | `OA-E001` | warning                                           | An `errors` entry whose exception status cannot be read from its source. The entry is ignored.                                    | Name a class with a numeric `status` field or `static status`.                                                                                  |
 | `OA-E002` | warning                                           | A package exception that renders its own body, which its declaration does not carry. It is documented without one.                | Render it in an `instanceof` branch of the exception handler's `handle()`.                                                                      |
 | `OA-E003` | warning                                           | An `errors.throwers` or `errors.middleware` key that matches nothing in the documented routes.                                    | Fix the key. See [Errors config](#errors-config).                                                                                               |

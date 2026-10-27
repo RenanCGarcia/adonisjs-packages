@@ -54,6 +54,7 @@ test.group('openapi:generate on the playground app: the document', group => {
       '/api/v1/probe/maintenance',
       '/api/v1/probe/upstream',
       '/api/v1/probe/throttled',
+      '/api/v1/probe/card',
       '/api/v1/probe/model',
       '/api/v1/probe/collections',
       '/api/v1/probe/search',

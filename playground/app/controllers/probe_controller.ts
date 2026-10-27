@@ -14,7 +14,12 @@ import {
   pagedProbeValidator,
   searchProbeValidator,
 } from '#validators/probe'
+import MemberCardTransformer from '#transformers/member_card_transformer'
 import type { HttpContext } from '@adonisjs/core/http'
+
+export const memberCardExample = {
+  data: { displayName: 'Jane Doe', initials: 'JD', name: 'Jane Doe', seats: 1 },
+}
 
 const manifest = fileURLToPath(new URL('../../package.json', import.meta.url))
 
@@ -177,6 +182,13 @@ export default class ProbeController {
       '{"code":"E_UPSTREAM","message":"Mail provider timed out","provider":"smtp"}',
     )
     return response.status(502).send(answer)
+  }
+
+  /**
+   * @example {200} memberCardExample
+   */
+  async card({ auth, serialize }: HttpContext) {
+    return serialize(MemberCardTransformer.transform(auth.getUserOrFail()))
   }
 
   async model() {

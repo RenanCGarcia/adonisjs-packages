@@ -1,5 +1,5 @@
 import ts from 'typescript'
-import type { JsonSchema } from '../types.ts'
+import type { Json, JsonSchema } from '../types.ts'
 
 const OMITTED = ts.TypeFlags.Undefined | ts.TypeFlags.Void
 
@@ -8,6 +8,15 @@ const BINARY = new Set(['MultipartFile', 'File', 'Blob'])
 
 // `JSON.stringify` writes them as `{}`.
 const EMPTY_OBJECTS = new Set(['Map', 'Set', 'ReadonlyMap', 'ReadonlySet', 'WeakMap', 'WeakSet'])
+
+function jsonOrText(text: string): Json {
+  try {
+    // SAFETY: JSON.parse only returns JSON values.
+    return JSON.parse(text) as Json
+  } catch {
+    return text
+  }
+}
 
 /**
  * Converts a type the checker resolved into JSON Schema (draft 2020-12, as OpenAPI 3.1 uses).
@@ -24,16 +33,20 @@ export class TypeToSchema {
 
   /**
    * Every named type becomes a component up front: a transformer nested in another
-   * resolves to a different type than its `Data` alias, and is matched by its schema.
+   * resolves to a different type than its `Data` alias, and is matched by its schema
+   * without the doc comments, which only `documented` gives.
    */
-  constructor(checker: ts.TypeChecker, named = new Map<ts.Type, string>()) {
+  constructor(
+    checker: ts.TypeChecker,
+    named = new Map<ts.Type, string>(),
+    documented = new Map<ts.Type, ts.Type>(),
+  ) {
     this.#checker = checker
     this.#named = named
 
     for (const [type, name] of named) {
-      const schema = this.#properties(type, [])
-      const serialized = JSON.stringify(schema)
-      this.components[name] = schema
+      const serialized = JSON.stringify(this.#properties(type, []))
+      this.components[name] = this.#properties(type, [], documented.get(type))
 
       if (!this.#namesBySchema.has(serialized)) this.#namesBySchema.set(serialized, name)
     }
@@ -165,7 +178,7 @@ export class TypeToSchema {
     return shared ? { $ref: `#/components/schemas/${shared}` } : schema
   }
 
-  #properties(type: ts.Type, stack: ts.Type[]): JsonSchema {
+  #properties(type: ts.Type, stack: ts.Type[], documented?: ts.Type): JsonSchema {
     const next = [...stack, type]
     const properties: Record<string, JsonSchema> = {}
     const required: string[] = []
@@ -181,7 +194,10 @@ export class TypeToSchema {
       )
         continue
 
-      properties[property.getName()] = this.convert(propertyType, next)
+      properties[property.getName()] = {
+        ...this.convert(propertyType, next),
+        ...this.#documentation(documented?.getProperty(property.getName()) ?? property),
+      }
 
       const optional =
         property.flags & ts.SymbolFlags.Optional || this.acceptsUndefined(propertyType)
@@ -198,6 +214,23 @@ export class TypeToSchema {
     }
 
     if (required.length) schema.required = required
+
+    return schema
+  }
+
+  #documentation(property: ts.Symbol): JsonSchema {
+    const schema: JsonSchema = {}
+    const description = ts.displayPartsToString(property.getDocumentationComment(this.#checker))
+
+    if (description.trim()) schema.description = description.trim()
+
+    for (const tag of property.getJsDocTags(this.#checker)) {
+      const text = ts.displayPartsToString(tag.text).trim()
+
+      if (tag.name === 'deprecated') schema.deprecated = true
+      else if (tag.name === 'example' && text) (schema.examples ??= []).push(jsonOrText(text))
+      else if (tag.name === 'default' && text) schema.default = jsonOrText(text)
+    }
 
     return schema
   }

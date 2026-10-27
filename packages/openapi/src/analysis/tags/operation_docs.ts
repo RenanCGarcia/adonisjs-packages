@@ -1,5 +1,6 @@
 import ts from 'typescript'
 import type { Diagnostic } from '../../types.ts'
+import { exampleTag, type ExampleTag } from './example_tag.ts'
 import { unknownTag } from './known_tags.ts'
 import { requestBodyTag } from './request_body_tag.ts'
 import { responseTag, type ResponseTag } from './response_tag.ts'
@@ -22,6 +23,7 @@ export interface OperationDocs {
    * `@response {502} {UpstreamError}` declares a status and its body.
    */
   responses: ResponseTag[]
+  examples: ExampleTag[]
   requestBody?: ts.Type
   problems: Diagnostic[]
 }
@@ -35,6 +37,7 @@ export function operationDocs(
   const doc = jsDoc(method)
   const throws: ThrowsTag[] = []
   const responses: ResponseTag[] = []
+  const examples: ExampleTag[] = []
   let requestBody: ts.Type | undefined
   const tags = tagsOf(doc) ?? tagsOf(jsDoc(controller))
   let deprecated = false
@@ -55,6 +58,10 @@ export function operationDocs(
       const response = responseTag(context, tag)
 
       if (response) responses.push(response)
+    } else if (name === 'example') {
+      const example = exampleTag(context, tag)
+
+      if (example) examples.push(example)
     } else if (name === 'requestBody') requestBody = requestBodyTag(context, tag)
     else if (ts.isJSDocDeprecatedTag(tag)) deprecated = true
     else if (name === 'remarks' && tagText(tag)) paragraphs.push(tagText(tag))
@@ -71,6 +78,7 @@ export function operationDocs(
     ...(requestBody && { requestBody }),
     throws,
     responses,
+    examples,
     problems: context.problems,
   }
 }

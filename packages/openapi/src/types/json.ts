@@ -20,6 +20,10 @@ export interface JsonSchema {
   anyOf?: JsonSchema[]
   oneOf?: JsonSchema[]
   not?: JsonSchema
+  description?: string
+  examples?: Json[]
+  deprecated?: true
+  default?: Json
 }
 
 export type Json = JsonValue | Json[] | { [key: string]: Json }

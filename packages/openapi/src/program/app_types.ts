@@ -98,7 +98,12 @@ export function readApp(
   )
 
   const configured = new ConfiguredErrors(checker, errors, types.config, exceptions, locate)
-  const named = new Map(transformerTypes(checker, program.getSourceFile(dataFile)))
+  const transformers = transformerTypes(checker, program.getSourceFile(dataFile))
+  const named = new Map(transformers.map(([type, name]) => [type, name]))
+
+  const documented = new Map(
+    transformers.flatMap(([type, , source]) => (source ? [[type, source] as const] : [])),
+  )
 
   if (types.validationError) named.set(types.validationError, 'ValidationError')
 
@@ -116,7 +121,7 @@ export function readApp(
 
   return {
     checker,
-    schemas: new TypeToSchema(checker, named),
+    schemas: new TypeToSchema(checker, named, documented),
     exceptions,
     errors: configured,
     validationError: types.validationError,

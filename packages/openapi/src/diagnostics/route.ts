@@ -75,6 +75,21 @@ export function underivedResponse(
   }
 }
 
+export function exampleWithoutBody(
+  route: string,
+  code: string,
+  location: SourceLocation,
+): Diagnostic {
+  return {
+    code: 'OA-T009',
+    severity: 'warning',
+    route,
+    message: `@example {${code}}: no ${code} with a body is documented for this route`,
+    fix: 'name a status whose response has a body, or remove the tag',
+    location,
+  }
+}
+
 export function statuslessException(
   route: string,
   name: string,

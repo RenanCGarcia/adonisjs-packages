@@ -16,7 +16,7 @@ import { responsesFor } from './responses/responses.ts'
 import { securityFor } from './security.ts'
 import { bodyFields, mergeSchemas, validatorSchemas } from './validator_schemas.ts'
 
-const NO_DOCS: OperationDocs = { meta: {}, throws: [], responses: [], problems: [] }
+const NO_DOCS: OperationDocs = { meta: {}, throws: [], responses: [], examples: [], problems: [] }
 
 export async function generateDocument(
   app: ApplicationService,

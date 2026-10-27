@@ -102,6 +102,7 @@ router
 
             return next()
           })
+        router.get('card', [controllers.Probe, 'card'])
         router.get('model', [controllers.Probe, 'model'])
         router.get('collections', [controllers.Probe, 'collections'])
         router.get('search', [controllers.Probe, 'search'])

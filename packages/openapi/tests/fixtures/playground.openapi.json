@@ -1937,6 +1937,43 @@
         }
       }
     },
+    "/api/v1/probe/card": {
+      "get": {
+        "operationId": "probe.probe.card",
+        "tags": [
+          "Probe"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/MemberCard"
+                    }
+                  },
+                  "additionalProperties": false,
+                  "required": [
+                    "data"
+                  ]
+                },
+                "example": {
+                  "data": {
+                    "displayName": "Jane Doe",
+                    "initials": "JD",
+                    "name": "Jane Doe",
+                    "seats": 1
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/probe/model": {
       "get": {
         "operationId": "probe.probe.model",
@@ -2400,6 +2437,48 @@
   },
   "components": {
     "schemas": {
+      "MemberCard": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "description": "Read `displayName` instead.",
+            "deprecated": true
+          },
+          "displayName": {
+            "type": "string",
+            "description": "The name shown on the card, or the email when the member has no name.",
+            "examples": [
+              "Jane Doe"
+            ]
+          },
+          "initials": {
+            "type": "string",
+            "examples": [
+              "JD"
+            ]
+          },
+          "seats": {
+            "type": "number",
+            "description": "How many seats the member's plan holds.",
+            "default": 1
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "displayName",
+          "initials",
+          "seats"
+        ]
+      },
       "User": {
         "type": "object",
         "properties": {
@@ -2462,21 +2541,26 @@
               "type": "object",
               "properties": {
                 "message": {
-                  "type": "string"
+                  "type": "string",
+                  "description": "The human-readable error message"
                 },
                 "field": {
-                  "type": "string"
+                  "type": "string",
+                  "description": "The field path where the error occurred (dot notation)"
                 },
                 "rule": {
-                  "type": "string"
+                  "type": "string",
+                  "description": "The name of the validation rule that failed"
                 },
                 "index": {
-                  "type": "number"
+                  "type": "number",
+                  "description": "The array index if this error is for an array element"
                 },
                 "meta": {
                   "type": "object",
                   "properties": {},
-                  "additionalProperties": {}
+                  "additionalProperties": {},
+                  "description": "Additional metadata about the error (e.g., attempted value, rule options)"
                 }
               },
               "additionalProperties": false,

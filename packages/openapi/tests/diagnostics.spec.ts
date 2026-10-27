@@ -124,6 +124,26 @@ test.group('openapi:generate on an app whose tags are wrong', group => {
     assert.notInclude(output, 'OA-T008 broken.annotated: @todo')
   })
 
+  test('warns about an @example it cannot read', ({ assert }) => {
+    assert.include(
+      output,
+      'OA-T009 broken.examples: @example {200} missingExample: missingExample is not in scope',
+    )
+    assert.include(
+      output,
+      'OA-T009 broken.examples: @example {200} computedExample: computedExample is not a const holding JSON',
+    )
+    assert.include(
+      output,
+      'OA-T009 broken.examples: @example {200} mutableExample: mutableExample is not a const holding JSON',
+    )
+    assert.include(
+      output,
+      'OA-T009 broken.examples: @example {404}: no 404 with a body is documented for this route',
+    )
+    assert.notInclude(output, 'OA-T008 broken.examples')
+  })
+
   test('warns about an operation without tags and a tag not declared', ({ assert }) => {
     assert.include(
       output,

@@ -38,6 +38,7 @@ export type ResponseSource = (
  * - `OA-T006`: an exception with no status code.
  * - `OA-T007`: a `@requestBody` or `@response` type that does not resolve, an error for `@response`.
  * - `OA-T008`: a tag the generator does not read.
+ * - `OA-T009`: an `@example {N}` whose value or status cannot be read.
  * - `OA-E001`: an `errors` entry whose exception status cannot be read from its source.
  * - `OA-E002`: a package exception that renders its own body, which its declaration does not carry.
  * - `OA-E003`: an `errors.throwers` or `errors.middleware` key that matches nothing in the documented routes.
@@ -63,6 +64,7 @@ export type DiagnosticCode =
   | 'OA-T006'
   | 'OA-T007'
   | 'OA-T008'
+  | 'OA-T009'
   | 'OA-E001'
   | 'OA-E002'
   | 'OA-E003'

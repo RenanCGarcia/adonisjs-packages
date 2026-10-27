@@ -1,5 +1,5 @@
 import type { DocumentConfig, DocumentInfo, SecurityConfig } from './config.ts'
-import type { JsonSchema } from './json.ts'
+import type { Json, JsonSchema } from './json.ts'
 
 export type HttpMethod = 'get' | 'post' | 'put' | 'patch' | 'delete' | 'options'
 
@@ -15,7 +15,7 @@ export interface OpenApiParameter {
 export interface OpenApiResponse {
   description: string
   headers?: Record<string, { schema: JsonSchema }>
-  content?: Record<string, { schema: JsonSchema }>
+  content?: Record<string, { schema: JsonSchema; example?: Json }>
 }
 
 export interface OpenApiReference {

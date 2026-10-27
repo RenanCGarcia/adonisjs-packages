@@ -2,7 +2,7 @@ import type ts from 'typescript'
 import { handlerResponses } from '../../analysis/handler_responses.ts'
 import { methodBodies } from '../../analysis/response_calls.ts'
 import type { OperationDocs } from '../../analysis/tags/operation_docs.ts'
-import { unknownReturnType } from '../../diagnostics/route.ts'
+import { exampleWithoutBody, unknownReturnType } from '../../diagnostics/route.ts'
 import type { AppTypes } from '../../program/app_types.ts'
 import type { ControllerHandler } from '../../routes/controller_handler.ts'
 import type { RouteOperation } from '../../routes/route_operation.ts'
@@ -50,7 +50,7 @@ export function responsesFor(
   app: AppTypes,
   controller: ControllerHandler | undefined,
   response: ts.Type | undefined,
-  docs: Pick<OperationDocs, 'throws' | 'responses'>,
+  docs: Pick<OperationDocs, 'throws' | 'responses' | 'examples'>,
   secured: string[],
   shared: Pick<ResponseContext, 'diagnostics' | 'components'>,
 ) {
@@ -72,5 +72,19 @@ export function responsesFor(
     context.outcomes.add('200', context.returned)
   }
 
-  return context.outcomes.render(context.components)
+  const rendered = context.outcomes.render(context.components)
+
+  for (const { code, value, tag } of docs.examples) {
+    const found = rendered.responses[code]
+    const content = found && 'content' in found ? found.content : undefined
+
+    if (!content) {
+      diagnostics.push(exampleWithoutBody(route.name, code, app.locate(tag)))
+      continue
+    }
+
+    for (const media of Object.values(content)) media.example = value
+  }
+
+  return rendered
 }
