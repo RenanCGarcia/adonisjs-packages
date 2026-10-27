@@ -1,7 +1,13 @@
 import { RoutesScanner } from '@adonisjs/assembler/routes_scanner'
 import type { RoutesListItem } from '@adonisjs/assembler/types'
 import type { Router } from '@adonisjs/core/http'
-import type { HttpMethod, OpenApiConfig, RouteMatcher, RouteOperation } from './types.ts'
+import type {
+  Diagnostic,
+  HttpMethod,
+  OpenApiConfig,
+  RouteMatcher,
+  RouteOperation,
+} from './types.ts'
 
 const METHODS = new Set<string>(['get', 'post', 'put', 'patch', 'delete', 'options'])
 
@@ -55,7 +61,7 @@ export async function collectRoutes(
   appRoot: string,
   router: Router,
   config: OpenApiConfig,
-  warnings: string[],
+  diagnostics: Diagnostic[],
 ): Promise<RouteOperation[]> {
   const live = router.toJSON()
   const middlewareByRoute = new Map<string, string[]>()
@@ -74,9 +80,12 @@ export async function collectRoutes(
       if (!(route.handler instanceof Function)) return true
 
       if (!DOCS_ROUTES.has(route.name ?? '') && isIncluded(route.name ?? '', config.routes))
-        warnings.push(
-          `${route.name ?? `${route.methods.join(',')} ${route.pattern}`}: closure handlers have no types to read, the route is skipped`,
-        )
+        diagnostics.push({
+          code: 'OA-R001',
+          severity: 'warning',
+          route: route.name ?? `${route.methods.join(',')} ${route.pattern}`,
+          message: 'closure handlers have no types to read, the route is skipped',
+        })
 
       return false
     }),

@@ -1,11 +1,14 @@
 import { execFile } from 'node:child_process'
-import { readFile, rm } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { promisify } from 'node:util'
 import { test } from '@japa/runner'
 import type { JsonSchema, OpenApiDocument, OpenApiResponse } from '../src/types.ts'
 
 const playground = new URL('../../../playground/', import.meta.url)
 const output = 'tmp/openapi.spec.json'
+const golden = new URL('fixtures/playground.openapi.json', import.meta.url)
 const run = promisify(execFile)
 
 const json = (response: OpenApiResponse | undefined) =>
@@ -69,7 +72,7 @@ test.group('openapi:generate on the playground app', group => {
       '/api/v1/probe/items/{id}',
       '/api/v1/probe/echo',
     ])
-    assert.include(logs, 'probe.closure: closure handlers have no types to read')
+    assert.include(logs, 'OA-R001 probe.closure: closure handlers have no types to read')
     assert.notInclude(logs, 'openapi.ui')
   })
 
@@ -468,5 +471,92 @@ test.group('openapi:generate on the playground app', group => {
 
   test('writes the tags from the config', ({ assert }) => {
     assert.deepEqual(document.tags, [{ name: 'Users', description: 'Public user profiles' }])
+  })
+
+  test('matches the committed playground document byte for byte', async ({ assert }) => {
+    const generated = await readFile(new URL(output, playground), 'utf8')
+
+    if (process.env.UPDATE_GOLDEN) await writeFile(golden, generated)
+
+    assert.isTrue(
+      generated === (await readFile(golden, 'utf8')),
+      'The playground document differs from tests/fixtures/playground.openapi.json. If the change is intended, run `UPDATE_GOLDEN=1 pnpm test` in packages/openapi and explain the diff in the PR.',
+    )
+  })
+})
+
+test.group('openapi:generate --output', () => {
+  test('writes an absolute path as given', async ({ assert }) => {
+    const dir = await mkdtemp(join(tmpdir(), 'openapi-'))
+    const file = join(dir, 'nested', 'openapi.json')
+
+    try {
+      const { stdout } = await run('node', ['ace', 'openapi:generate', `--output=${file}`], {
+        cwd: playground,
+      })
+
+      assert.include(stdout, `OpenAPI document written to ${file}`)
+      assert.equal(JSON.parse(await readFile(file, 'utf8')).openapi, '3.1.0')
+    } finally {
+      await rm(dir, { recursive: true })
+    }
+  })
+})
+
+test.group('openapi:generate --explain', () => {
+  test('prints where each response of a route comes from', async ({ assert }) => {
+    const { stdout } = await run(
+      'node',
+      ['ace', 'openapi:generate', '--explain=auth.new_account.store'],
+      { cwd: playground },
+    )
+
+    assert.include(stdout, 'throw new EmailTakenException() (app/services/create_account.ts:')
+    assert.include(stdout, 'a @throws tag (app/controllers/new_account_controller.ts:')
+    assert.include(stdout, 'the validator rejects the input')
+  })
+
+  test('names the middleware that secures a route', async ({ assert }) => {
+    const { stdout } = await run(
+      'node',
+      ['ace', 'openapi:generate', '--explain=profile.profile.show'],
+      { cwd: playground },
+    )
+
+    assert.include(stdout, 'the auth middleware secures the route')
+  })
+
+  test('fails on an unknown route', async ({ assert }) => {
+    await assert.rejects(() =>
+      run('node', ['ace', 'openapi:generate', '--explain=nope'], { cwd: playground }),
+    )
+  })
+})
+
+test.group('openapi:check', group => {
+  const committed = new URL('openapi.json', playground)
+
+  group.each.setup(async () => {
+    await run('node', ['ace', 'openapi:generate'], { cwd: playground })
+  })
+
+  test('passes when the committed document is up to date', async ({ assert }) => {
+    const { stdout } = await run('node', ['ace', 'openapi:check'], { cwd: playground })
+
+    assert.include(stdout, 'openapi.json is up to date')
+  })
+
+  test('fails and names what differs when the document is out of date', async ({ assert }) => {
+    const document: OpenApiDocument = JSON.parse(await readFile(committed, 'utf8'))
+    document.info.version = '0.0.0'
+    await writeFile(committed, `${JSON.stringify(document, null, 2)}\n`)
+
+    const error = await run('node', ['ace', 'openapi:check'], { cwd: playground }).then(
+      () => undefined,
+      (failure: { stdout: string; stderr: string }) => failure,
+    )
+
+    assert.exists(error)
+    assert.include(`${error!.stdout}${error!.stderr}`, '/info/version')
   })
 })

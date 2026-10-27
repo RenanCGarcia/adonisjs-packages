@@ -29,7 +29,29 @@ The command installs the package and creates `config/openapi.ts`. In `adonisrc.t
 node ace openapi:generate
 ```
 
-The command boots the app the way `node ace codegen` does, so no database connection or queue worker starts. It writes `openapi.json` at the app root. To write it somewhere else, pass `--output=public/openapi.json` or set `output` in the config.
+The command boots the app the way `node ace codegen` does, so no database connection or queue worker starts. It writes `openapi.json` at the app root. To write it somewhere else, pass `--output=public/openapi.json` or set `output` in the config. An absolute `--output` is used as given.
+
+Each warning starts with a stable code, such as `OA-R002`, and names the route and the source line when it has one. `generateDocument()` returns them as `diagnostics`, with `code`, `severity`, `route`, `message`, `fix` and `location`.
+
+To see where each response of a route comes from, pass the route name to `--explain`. The command prints the sources and writes no file:
+
+```sh
+node ace openapi:generate --explain=users.users.show
+# 200
+#   the handler's return type (app/controllers/users_controller.ts:32)
+# 404
+#   a @throws tag (app/controllers/users_controller.ts:30)
+# 422
+#   the validator rejects the input
+```
+
+### Check the committed document
+
+```sh
+node ace openapi:check
+```
+
+The command generates the document in memory and compares it with the file at `output`. When they differ, it lists the JSON Pointers that changed and exits with code `1`. Run it in CI when clients are generated from the committed file.
 
 ## Configure
 

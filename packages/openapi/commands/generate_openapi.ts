@@ -1,51 +1,79 @@
-import { dirname, join } from 'node:path'
+import { dirname, isAbsolute, relative, resolve } from 'node:path'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
-import { BaseCommand, flags } from '@adonisjs/core/ace'
-import { defineConfig } from '../src/define_config.ts'
-import type { OpenApiConfig } from '../src/types.ts'
+import { flags } from '@adonisjs/core/ace'
+import type { ResponseSource } from '../src/types.ts'
+import { OpenApiCommand } from './base_command.ts'
 
-export default class GenerateOpenApi extends BaseCommand {
+function describe(source: ResponseSource) {
+  const where = source.location ? ` (${source.location.file}:${source.location.line})` : ''
+
+  switch (source.kind) {
+    case 'return':
+      return `the handler's return type${where}`
+    case 'answer':
+      return `a response call in the handler${where}`
+    case 'throw':
+      return `throw new ${source.exception}()${where}`
+    case 'middleware':
+      return `the middleware ${source.middleware}${where}`
+    case 'security':
+      return `the ${source.middleware} middleware secures the route`
+    case 'validator':
+      return 'the validator rejects the input'
+    case 'tag':
+      return `a ${source.tag} tag${where}`
+  }
+}
+
+export default class GenerateOpenApi extends OpenApiCommand {
   static commandName = 'openapi:generate'
   static description = 'Generate an OpenAPI document from the routes, validators and transformers'
 
   @flags.string({
-    description: 'Output file, relative to the app root. Defaults to config/openapi.ts "output"',
+    description:
+      'Output file, absolute or relative to the app root. Defaults to config/openapi.ts "output"',
   })
   declare output?: string
 
-  /**
-   * Same warm-up as `node ace codegen`: the app is assembled like the web
-   * environment, but never becomes ready, so no long-running side effect starts.
-   */
-  async #warmUpApp() {
-    this.app.setEnvironment('web')
-    this.app.setMode('warmup')
-    await this.app.boot()
-    await this.app.warmUp()
+  @flags.string({
+    description:
+      'Print where each response of the named route comes from, without writing the file',
+  })
+  declare explain?: string
 
-    const router = await this.app.container.make('router')
-    router.commit()
+  #explain(route: string, provenance: Record<string, Record<string, ResponseSource[]>>) {
+    const responses = provenance[route]
 
-    return router
+    if (!responses) {
+      this.logger.error(`No documented route is named ${route}`)
+      this.exitCode = 1
+
+      return
+    }
+
+    for (const [code, sources] of Object.entries(responses)) {
+      this.logger.log(code)
+
+      for (const source of sources) this.logger.log(`  ${describe(source)}`)
+    }
   }
 
   async run() {
-    const router = await this.#warmUpApp()
-    const config = this.app.config.get<OpenApiConfig | undefined>('openapi') ?? defineConfig()
     const startTime = process.hrtime()
+    const { document, provenance, config } = await this.generate()
 
-    // Loaded on run: it pulls in the TypeScript compiler, which every other ace command would pay for.
-    const { generateDocument } = await import('../src/generate.ts')
-    const { document, warnings } = await generateDocument(this.app, router, config)
+    if (this.explain) return this.#explain(this.explain, provenance)
 
-    for (const warning of warnings) this.logger.warning(warning)
-
-    const output = join(fileURLToPath(this.app.appRoot), this.output ?? config.output)
+    const appRoot = fileURLToPath(this.app.appRoot)
+    const output = resolve(appRoot, this.output ?? config.output)
     await mkdir(dirname(output), { recursive: true })
     await writeFile(output, `${JSON.stringify(document, null, 2)}\n`)
 
-    this.logger.success(`OpenAPI document written to ${this.app.relativePath(output)}`, {
+    const shown = relative(appRoot, output)
+    const inside = !shown.startsWith('..') && !isAbsolute(shown)
+
+    this.logger.success(`OpenAPI document written to ${inside ? shown : output}`, {
       startTime,
     })
   }

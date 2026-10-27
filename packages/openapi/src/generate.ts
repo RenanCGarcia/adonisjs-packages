@@ -7,12 +7,14 @@ import { collectRoutes } from './collect_routes.ts'
 import type { ThrownResponse } from './operation_docs.ts'
 import { RouteTypes } from './route_types.ts'
 import type {
+  Diagnostic,
   JsonSchema,
   OpenApiConfig,
   OpenApiDocument,
   OpenApiOperation,
   OpenApiParameter,
   OpenApiResponse,
+  ResponseSource,
   RouteOperation,
 } from './types.ts'
 
@@ -20,7 +22,11 @@ const NOT_IN_BODY = new Set(['query', 'params', 'headers', 'cookies'])
 
 export interface GeneratedDocument {
   document: OpenApiDocument
-  warnings: string[]
+  diagnostics: Diagnostic[]
+  /**
+   * Route name to status code to what documented that response, in the order it was read.
+   */
+  provenance: Record<string, Record<string, ResponseSource[]>>
 }
 
 /**
@@ -67,7 +73,7 @@ function pick(schema: JsonSchema, keep: (key: string) => boolean): JsonSchema | 
 async function validatorSchemas(
   app: ApplicationService,
   routes: RouteOperation[],
-  warnings: string[],
+  diagnostics: Diagnostic[],
 ) {
   const schemas = new Map<string, JsonSchema>()
 
@@ -84,9 +90,12 @@ async function validatorSchemas(
       if (validator) schemas.set(route.name, validator.toJSONSchema())
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error)
-      warnings.push(
-        `${route.name}: cannot read the JSON Schema of ${specifier}#${exportName} (${reason})`,
-      )
+      diagnostics.push({
+        code: 'OA-V001',
+        severity: 'warning',
+        route: route.name,
+        message: `cannot read the JSON Schema of ${specifier}#${exportName} (${reason})`,
+      })
     }
   }
 
@@ -114,6 +123,7 @@ interface Outcome {
    * Whether the handler can also answer with no body, as when it returns `T | undefined`.
    */
   optional: boolean
+  sources: ResponseSource[]
 }
 
 const EMPTY_STATUSES = new Set(['204', '205', '304'])
@@ -161,8 +171,8 @@ function responsesFor(
   types: RouteTypes,
   response: ts.Type | undefined,
   thrown: Record<string, ThrownResponse>,
-  secured: boolean,
-  warnings: string[],
+  secured: string[],
+  diagnostics: Diagnostic[],
 ) {
   const outcomes = new Map<string, Outcome>()
   const handler = types.handlerResponses(route)
@@ -173,7 +183,7 @@ function responsesFor(
     let found = outcomes.get(code)
 
     if (!found) {
-      found = { reasons: [], bodies: [], headers: new Set(), optional: false }
+      found = { reasons: [], bodies: [], headers: new Set(), optional: false, sources: [] }
       outcomes.set(code, found)
     }
 
@@ -195,8 +205,11 @@ function responsesFor(
     }
   }
 
-  const answer = (code: string, body?: Body, headers: string[] = []) => {
+  const returned: ResponseSource = { kind: 'return', location: types.handlerLocation(route) }
+
+  const answer = (source: ResponseSource, code: string, body?: Body, headers: string[] = []) => {
     const found = outcome(code)
+    found.sources.push(source)
 
     if (body) found.bodies.push(body)
 
@@ -219,25 +232,29 @@ function responsesFor(
 
       if (status) code = status.isNumberLiteral() ? String(status.value) : 'default'
 
-      answer(code, payload.flags & WITHOUT_BODY ? undefined : handlerBody(payload))
-    } else if (member.flags & ts.TypeFlags.Null) answer('204')
+      answer(returned, code, payload.flags & WITHOUT_BODY ? undefined : handlerBody(payload))
+    } else if (member.flags & ts.TypeFlags.Null) answer(returned, '204')
     else if (member.flags & (ts.TypeFlags.Void | ts.TypeFlags.Undefined)) optional = true
     else if (!(member.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown))) {
       returnsPlain = true
-      answer(plain, handlerBody(member))
+      answer(returned, plain, handlerBody(member))
     }
   }
 
-  for (const { code = plain, body, binary, headers } of handler.answers) {
+  for (const { code = plain, body, binary, headers, node } of handler.answers) {
     const payload = body && !(body.flags & WITHOUT_BODY) ? handlerBody(body) : undefined
+    const source: ResponseSource = { kind: 'answer', location: types.location(node) }
 
-    answer(code, binary ? BINARY : payload, headers)
+    answer(source, code, binary ? BINARY : payload, headers)
   }
 
   if (optional && returnsPlain) outcome(plain).optional = true
 
-  for (const { code = plain, body } of handler.thrown)
-    outcome(code).bodies.push(...(body ? [json(body)] : []))
+  for (const { code = plain, body, node, exception = '' } of handler.thrown) {
+    const found = outcome(code)
+    found.sources.push({ kind: 'throw', exception, location: types.location(node) })
+    found.bodies.push(...(body ? [json(body)] : []))
+  }
 
   const typed = outcomes.size > 0
 
@@ -245,8 +262,15 @@ function responsesFor(
   // secured route, gets the body its exception handler renders.
   const { byCode, fallback } = types.errorResponses()
 
-  for (const [code, { description, bodies, rendered }] of Object.entries(thrown)) {
+  for (const [code, { description, bodies, rendered, tags }] of Object.entries(thrown)) {
     const found = outcome(code)
+    found.sources.push(
+      ...tags.map((tag): ResponseSource => ({
+        kind: 'tag',
+        tag: '@throws',
+        location: types.location(tag),
+      })),
+    )
 
     found.reasons.push(description)
     found.bodies.push(...bodies.map(json))
@@ -260,16 +284,27 @@ function responsesFor(
   // The validator's error shares the status code an exception documents, so the body is either.
   const validationError = route.validator && types.validationError()
 
-  if (validationError) outcome('422').bodies.push(json(validationError))
+  if (validationError) {
+    const found = outcome('422')
+    found.sources.push({ kind: 'validator' })
+    found.bodies.push(json(validationError))
+  }
 
-  for (const { code, body } of types.middlewareResponses(route))
-    outcome(code).bodies.push(...(body ? [json(body)] : []))
+  for (const { code, body, node, middleware } of types.middlewareResponses(route)) {
+    const found = outcome(code)
+    found.sources.push({ kind: 'middleware', middleware, location: types.location(node) })
+    found.bodies.push(...(body ? [json(body)] : []))
+  }
 
-  if (secured) {
+  if (secured.length) {
     const auth = types.unauthorizedBody()
     const unauthorized = byCode.get('401') ?? (auth ? [auth] : [])
+    const found = outcome('401')
 
-    outcome('401').bodies.push(...unauthorized.map(json))
+    found.sources.push(
+      ...secured.map((middleware): ResponseSource => ({ kind: 'security', middleware })),
+    )
+    found.bodies.push(...unauthorized.map(json))
   }
 
   for (const [code, found] of outcomes) {
@@ -278,13 +313,23 @@ function responsesFor(
   }
 
   if (!typed) {
-    warnings.push(
-      `${route.name}: the handler's return type is unknown, returning serialize(...) makes it typed`,
-    )
-    outcome('200')
+    diagnostics.push({
+      code: 'OA-R002',
+      severity: 'warning',
+      route: route.name,
+      message: "the handler's return type is unknown",
+      fix: 'return serialize(...) to make it typed',
+      ...(returned.location && { location: returned.location }),
+    })
+    outcome('200').sources.push(returned)
   }
 
-  return Object.fromEntries([...outcomes].map(([code, found]) => [code, render(code, found)]))
+  return {
+    responses: Object.fromEntries(
+      [...outcomes].map(([code, found]) => [code, render(code, found)]),
+    ),
+    sources: Object.fromEntries([...outcomes].map(([code, found]) => [code, found.sources])),
+  }
 }
 
 function parametersFor(route: RouteOperation, query?: JsonSchema, params?: JsonSchema) {
@@ -318,13 +363,14 @@ export async function generateDocument(
   router: Router,
   config: OpenApiConfig,
 ): Promise<GeneratedDocument> {
-  const warnings: string[] = []
+  const diagnostics: Diagnostic[] = []
   const appRoot = fileURLToPath(app.appRoot)
-  const routes = await collectRoutes(appRoot, router, config, warnings)
+  const routes = await collectRoutes(appRoot, router, config, diagnostics)
   const types = new RouteTypes(appRoot, routes, config.errorResponse)
-  const vine = await validatorSchemas(app, routes, warnings)
+  const vine = await validatorSchemas(app, routes, diagnostics)
 
   const paths: OpenApiDocument['paths'] = {}
+  const provenance: GeneratedDocument['provenance'] = {}
 
   for (const route of routes) {
     const { request, response } = types.get(route.name)
@@ -333,16 +379,33 @@ export async function generateDocument(
 
     const { responses: thrown, requestBody, problems, ...docs } = types.docs(route)
 
-    warnings.push(...problems.map(problem => `${route.name}: ${problem}`))
+    diagnostics.push(
+      ...problems.map(({ node, ...problem }): Diagnostic => ({
+        ...problem,
+        severity: 'warning',
+        route: route.name,
+        location: types.location(node),
+      })),
+    )
 
     // Entries of `security` are alternatives, so the schemes a route requires together share one entry.
-    const schemes = route.middleware.flatMap(name => config.middlewareSecurity[name] ?? [])
+    const secured = route.middleware.filter(name => config.middlewareSecurity[name])
+    const schemes = secured.map(name => config.middlewareSecurity[name]!)
 
     const security: Record<string, string[]>[] = schemes.length
       ? [Object.fromEntries(schemes.map(scheme => [scheme, []]))]
       : []
 
-    const responses = responsesFor(route, types, response, thrown, security.length > 0, warnings)
+    const { responses, sources } = responsesFor(
+      route,
+      types,
+      response,
+      thrown,
+      secured,
+      diagnostics,
+    )
+
+    provenance[route.name] = sources
 
     const methods = paths[route.path] ?? {}
     paths[route.path] = methods
@@ -380,11 +443,20 @@ export async function generateDocument(
   }
 
   for (const type of types.schemas.unsupported) {
-    warnings.push(`no JSON Schema for the type ${type}, emitted {}`)
+    diagnostics.push({
+      code: 'OA-J001',
+      severity: 'warning',
+      message: `no JSON Schema for the type ${type}, emitted {}`,
+    })
   }
 
   for (const model of types.schemas.models) {
-    warnings.push(`${model} is a Lucid model, emitted {}: return it through a transformer`)
+    diagnostics.push({
+      code: 'OA-J002',
+      severity: 'warning',
+      message: `${model} is a Lucid model, emitted {}`,
+      fix: 'return it through a transformer',
+    })
   }
 
   const document: OpenApiDocument = {
@@ -398,5 +470,5 @@ export async function generateDocument(
 
   if (config.tags.length) document.tags = config.tags
 
-  return { document, warnings }
+  return { document, diagnostics, provenance }
 }

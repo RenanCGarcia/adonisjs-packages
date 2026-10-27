@@ -11,7 +11,7 @@ import {
   type OperationDocs,
 } from './operation_docs.ts'
 import { TypeToSchema } from './type_to_schema.ts'
-import type { OpenApiConfig, RouteOperation } from './types.ts'
+import type { OpenApiConfig, RouteOperation, SourceLocation } from './types.ts'
 
 /**
  * The `HttpResponse` helpers that set a status code, as Tuyau types them minus the
@@ -61,6 +61,7 @@ export class RouteTypes {
   readonly checker: ts.TypeChecker
   readonly schemas: TypeToSchema
   #program: ts.Program
+  #appRoot: string
   #routes: ts.InterfaceDeclaration
   #validationError?: ts.TypeAliasDeclaration
   #errorBody: ts.Type
@@ -112,6 +113,7 @@ export class RouteTypes {
     })
 
     this.#program = program
+    this.#appRoot = appRoot
     this.checker = program.getTypeChecker()
 
     const entry = program.getSourceFile(entryFile)!
@@ -285,10 +287,28 @@ export class RouteTypes {
     ]
 
     return specifiers.flatMap(specifier =>
-      this.#answersOf(specifier, ['handle']).filter(
-        (answer): answer is Answer & { code: string } => answer.code !== undefined,
+      this.#answersOf(specifier, ['handle']).flatMap(answer =>
+        answer.code === undefined ? [] : [{ ...answer, code: answer.code, middleware: specifier }],
       ),
     )
+  }
+
+  location(node: ts.Node): SourceLocation {
+    const file = node.getSourceFile()
+
+    return {
+      file: relative(this.#appRoot, file.fileName),
+      line: file.getLineAndCharacterOfPosition(node.getStart()).line + 1,
+    }
+  }
+
+  /**
+   * Where the handler method is declared, absent for a route whose controller cannot be read.
+   */
+  handlerLocation(route: RouteOperation) {
+    const handler = this.#handler(route)
+
+    return handler && this.location(handler.method.name)
   }
 
   #handler({ controller }: RouteOperation) {

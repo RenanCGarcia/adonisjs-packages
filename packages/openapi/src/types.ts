@@ -129,6 +129,63 @@ export interface OpenApiDocument {
 }
 
 /**
+ * A line of the app's sources, relative to the app root. Lines start at 1.
+ */
+export interface SourceLocation {
+  file: string
+  line: number
+}
+
+/**
+ * What documented a status code of an operation.
+ */
+export type ResponseSource = (
+  | { kind: 'return' }
+  | { kind: 'answer' }
+  | { kind: 'throw'; exception: string }
+  | { kind: 'middleware'; middleware: string }
+  | { kind: 'security'; middleware: string }
+  | { kind: 'validator' }
+  | { kind: 'tag'; tag: '@throws' }
+) & { location?: SourceLocation }
+
+/**
+ * Codes are stable: a code keeps its meaning across releases.
+ *
+ * - `OA-R001`: a closure route, skipped.
+ * - `OA-R002`: a handler whose return type is unknown.
+ * - `OA-V001`: a validator whose JSON Schema cannot be read.
+ * - `OA-T004`: a `@throws` literal that is not a status code.
+ * - `OA-T005`: a `@throws` type that does not resolve to a class.
+ * - `OA-T006`: an exception with no status code.
+ * - `OA-T007`: a `@requestBody` type that does not resolve.
+ * - `OA-J001`: a type with no JSON Schema, emitted as `{}`.
+ * - `OA-J002`: a Lucid model, emitted as `{}`.
+ */
+export type DiagnosticCode =
+  | 'OA-R001'
+  | 'OA-R002'
+  | 'OA-V001'
+  | 'OA-T004'
+  | 'OA-T005'
+  | 'OA-T006'
+  | 'OA-T007'
+  | 'OA-J001'
+  | 'OA-J002'
+
+export interface Diagnostic {
+  code: DiagnosticCode
+  severity: 'error' | 'warning'
+  /**
+   * The route name, absent for a problem of the whole document.
+   */
+  route?: string
+  message: string
+  fix?: string
+  location?: SourceLocation
+}
+
+/**
  * What a docs UI needs to render its page.
  */
 export interface DocsPage {

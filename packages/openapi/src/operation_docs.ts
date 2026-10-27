@@ -1,5 +1,6 @@
 import { STATUS_CODES } from 'node:http'
 import ts from 'typescript'
+import type { DiagnosticCode } from './types.ts'
 
 export interface OperationDocs {
   summary?: string
@@ -18,7 +19,14 @@ export interface OperationDocs {
   /**
    * Why a `@throws` or `@requestBody` tag could not be documented.
    */
-  problems: string[]
+  problems: Problem[]
+}
+
+export interface Problem {
+  code: DiagnosticCode
+  message: string
+  fix?: string
+  node: ts.Node
 }
 
 export interface ThrownResponse {
@@ -29,6 +37,7 @@ export interface ThrownResponse {
    * documented when the action sends none of its own for that status.
    */
   rendered: boolean
+  tags: ts.JSDocTag[]
 }
 
 function jsDoc(node: ts.Node) {
@@ -164,7 +173,8 @@ function exceptionResponse(
   checker: ts.TypeChecker,
   constructor: ts.Type,
   instance: ts.Type,
-  problems: string[],
+  problems: Problem[],
+  node: ts.Node,
 ): Thrown[] {
   const { calls } = responseCalls(checker, instance)
 
@@ -208,9 +218,12 @@ function exceptionResponse(
 
     if (code) responses.push({ code, bodies })
     else
-      problems.push(
-        `@throws: ${checker.typeToString(instance)} has no status code: give it a literal \`static status\`, call \`response.status(...)\` with one in \`handle()\` or answer with a helper such as \`response.conflict(body)\``,
-      )
+      problems.push({
+        code: 'OA-T006',
+        message: `@throws: ${checker.typeToString(instance)} has no status code`,
+        fix: 'give it a literal `static status`, call `response.status(...)` with one in `handle()` or answer with a helper such as `response.conflict(body)`',
+        node,
+      })
   }
 
   return responses
@@ -225,7 +238,7 @@ function thrownResponses(
   checker: ts.TypeChecker,
   resolveModule: ResolveModule,
   type: ts.TypeNode,
-  problems: string[],
+  problems: Problem[],
 ): Thrown[] {
   if (ts.isUnionTypeNode(type))
     return type.types.flatMap(member => thrownResponses(checker, resolveModule, member, problems))
@@ -235,7 +248,11 @@ function thrownResponses(
 
     if (code) return [{ code, bodies: [], rendered: true }]
 
-    problems.push(`@throws: ${type.getText()} is not a status code`)
+    problems.push({
+      code: 'OA-T004',
+      message: `@throws: ${type.getText()} is not a status code`,
+      node: type,
+    })
 
     return []
   }
@@ -261,14 +278,26 @@ function thrownResponses(
   const constructor = target?.declarations?.length ? checker.getTypeOfSymbol(target) : undefined
   const instance = constructor?.getConstructSignatures()[0]?.getReturnType()
 
-  if (constructor && instance) return exceptionResponse(checker, constructor, instance, problems)
+  if (constructor && instance)
+    return exceptionResponse(checker, constructor, instance, problems, type)
 
-  let problem = 'is not in scope, import it in the controller or name it as import(...).Export'
+  const message = `@throws: ${type.getText()}`
 
-  if (target?.declarations?.length) problem = 'is not a class'
-  else if (ts.isImportTypeNode(type)) problem = 'does not name an export of a module'
-
-  problems.push(`@throws: ${type.getText()} ${problem}`)
+  if (target?.declarations?.length)
+    problems.push({ code: 'OA-T005', message: `${message} is not a class`, node: type })
+  else if (ts.isImportTypeNode(type))
+    problems.push({
+      code: 'OA-T005',
+      message: `${message} does not name an export of a module`,
+      node: type,
+    })
+  else
+    problems.push({
+      code: 'OA-T005',
+      message: `${message} is not in scope`,
+      fix: 'import it in the controller or name it as import(...).Export',
+      node: type,
+    })
 
   return []
 }
@@ -282,7 +311,7 @@ function requestBodyType(
   resolveModule: ResolveModule,
   method: ts.MethodDeclaration,
   tag: ts.JSDocTag,
-  problems: string[],
+  problems: Problem[],
 ) {
   const text = tagText(tag)
   const name = /^\{\s*([\w$]+)\s*\}$/.exec(text)?.[1]
@@ -303,13 +332,28 @@ function requestBodyType(
 
   if (symbol) return checker.getDeclaredTypeOfSymbol(aliased(checker, symbol))
 
-  let problem = 'expected a type name, such as {MailEvent}'
+  const message = `@requestBody ${text}`
 
-  if (imported) problem = `${text.slice(1, -1).trim()} does not name an export of a module`
+  if (imported)
+    problems.push({
+      code: 'OA-T007',
+      message: `${message}: ${text.slice(1, -1).trim()} does not name an export of a module`,
+      node: tag,
+    })
   else if (name)
-    problem = `${name} is not in scope, import it in the controller or name it as import('...').${name}`
-
-  problems.push(`@requestBody ${text}: ${problem}`)
+    problems.push({
+      code: 'OA-T007',
+      message: `${message}: ${name} is not in scope`,
+      fix: `import it in the controller or name it as import('...').${name}`,
+      node: tag,
+    })
+  else
+    problems.push({
+      code: 'OA-T007',
+      message: `${message}: expected a type name`,
+      fix: 'name a type, such as {MailEvent}',
+      node: tag,
+    })
 
   return undefined
 }
@@ -325,6 +369,14 @@ export interface Answer {
    */
   binary?: true
   headers?: string[]
+  /**
+   * The call or `throw new X()` the answer was read from.
+   */
+  node: ts.Node
+  /**
+   * The class of a thrown exception.
+   */
+  exception?: string
 }
 
 function chainedStatus(checker: ts.TypeChecker, call: ts.CallExpression) {
@@ -344,7 +396,11 @@ function chainedStatus(checker: ts.TypeChecker, call: ts.CallExpression) {
 /**
  * `abort()` and `redirect()` default to `400` and `302`, as `HttpResponse` does.
  */
-function answerOf(checker: ts.TypeChecker, name: string, call: ts.CallExpression): Answer[] {
+function answerOf(
+  checker: ts.TypeChecker,
+  name: string,
+  call: ts.CallExpression,
+): Omit<Answer, 'node'>[] {
   const args = call.arguments
   const typeOf = (index: number) => args[index] && checker.getTypeAtLocation(args[index])
 
@@ -382,9 +438,12 @@ function thrownAnswers(checker: ts.TypeChecker, throws: ts.NewExpression[]): Ans
     const constructor = checker.getTypeAtLocation(expression.expression)
     const instance = checker.getTypeAtLocation(expression)
 
+    const thrown = { node: expression, exception: expression.expression.getText() }
+
     // A thrown class without a status, such as a plain `Error`, is left to the exception handler.
-    return exceptionResponse(checker, constructor, instance, []).flatMap(({ code, bodies }) =>
-      bodies.length ? bodies.map(body => ({ code, body })) : [{ code }],
+    return exceptionResponse(checker, constructor, instance, [], expression).flatMap(
+      ({ code, bodies }) =>
+        bodies.length ? bodies.map(body => ({ ...thrown, code, body })) : [{ ...thrown, code }],
     )
   })
 }
@@ -398,7 +457,9 @@ export function answers(checker: ts.TypeChecker, instance: ts.Type, methods: str
   const { calls, throws } = responseCalls(checker, instance, methods)
 
   return [
-    ...calls.flatMap(({ name, call }) => answerOf(checker, name, call)),
+    ...calls.flatMap(({ name, call }) =>
+      answerOf(checker, name, call).map(answer => ({ ...answer, node: call })),
+    ),
     ...thrownAnswers(checker, throws),
   ]
 }
@@ -448,7 +509,10 @@ export function handlerResponses(
       else if (value?.isStringLiteral()) handler.contentType = value.value
     } else if (name === 'status' && ts.isExpressionStatement(call.parent)) {
       handler.status = first && statusOf(checker.getTypeAtLocation(first))
-    } else handler.answers.push(...answerOf(checker, name, call))
+    } else
+      handler.answers.push(
+        ...answerOf(checker, name, call).map(answer => ({ ...answer, node: call })),
+      )
   }
 
   return handler
@@ -467,7 +531,7 @@ export function operationDocs(
   let requestBody: ts.Type | undefined
   const tags = tagsOf(doc) ?? tagsOf(jsDoc(controller))
   let deprecated = false
-  const problems: string[] = []
+  const problems: Problem[] = []
 
   const [summary, ...paragraphs] = (ts.getTextOfJSDocComment(doc?.comment) ?? '')
     .split(/\n\s*\n/)
@@ -492,7 +556,10 @@ export function operationDocs(
           description: '',
           bodies: [],
           rendered: false,
+          tags: [],
         })
+
+        if (!response.tags.includes(tag)) response.tags.push(tag)
 
         response.description =
           reasons.join('; ') || (STATUS_CODES[Number(thrown.code)] ?? thrown.code)
