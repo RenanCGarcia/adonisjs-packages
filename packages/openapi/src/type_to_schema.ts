@@ -6,6 +6,9 @@ const OMITTED = ts.TypeFlags.Undefined | ts.TypeFlags.Void
 // `vine.file()` infers `MultipartFile` on the server and `File | Blob` for clients.
 const BINARY = new Set(['MultipartFile', 'File', 'Blob'])
 
+// `JSON.stringify` writes them as `{}`.
+const EMPTY_OBJECTS = new Set(['Map', 'Set', 'ReadonlyMap', 'ReadonlySet', 'WeakMap', 'WeakSet'])
+
 /**
  * Converts a type the checker resolved into JSON Schema (draft 2020-12, as OpenAPI 3.1 uses).
  * Serialized output types are plain data, so methods are dropped and dates become strings.
@@ -17,6 +20,7 @@ export class TypeToSchema {
   #namesBySchema = new Map<string, string>()
   readonly components: Record<string, JsonSchema> = {}
   readonly unsupported = new Set<string>()
+  readonly models = new Set<string>()
 
   /**
    * Every named type becomes a component up front: a transformer nested in another
@@ -53,7 +57,8 @@ export class TypeToSchema {
 
     if (flags & ts.TypeFlags.Number) return { type: 'number' }
 
-    if (flags & ts.TypeFlags.BigInt) return { type: 'integer' }
+    // AdonisJS serializes a bigint as its digits in a string.
+    if (flags & ts.TypeFlags.BigIntLike) return { type: 'string' }
 
     if (flags & ts.TypeFlags.Boolean) return { type: 'boolean' }
 
@@ -68,6 +73,16 @@ export class TypeToSchema {
     if (name === 'Date' || name === 'DateTime') return { type: 'string', format: 'date-time' }
 
     if (name && BINARY.has(name)) return { type: 'string', format: 'binary' }
+
+    if (name && EMPTY_OBJECTS.has(name))
+      return { type: 'object', properties: {}, additionalProperties: false }
+
+    // A Lucid model serializes through `serialize()`, which its type does not describe.
+    if (this.#checker.getPropertyOfType(type, '$attributes')) {
+      this.models.add(this.#checker.typeToString(type))
+
+      return {}
+    }
 
     if (this.#checker.isArrayType(type)) {
       // SAFETY: isArrayType only holds for TypeReference instances.
@@ -158,7 +173,13 @@ export class TypeToSchema {
     for (const property of this.#checker.getPropertiesOfType(type)) {
       const propertyType = this.#checker.getTypeOfSymbol(property)
 
-      if (propertyType.getCallSignatures().length) continue
+      // `__@` names a symbol key such as `Symbol.iterator`, which JSON leaves out like a property typed `undefined`.
+      if (
+        propertyType.getCallSignatures().length ||
+        property.getName().startsWith('__@') ||
+        propertyType.flags & OMITTED
+      )
+        continue
 
       properties[property.getName()] = this.convert(propertyType, next)
 

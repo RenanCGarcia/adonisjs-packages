@@ -60,6 +60,7 @@ export default defineConfig({
 - `info` is the OpenAPI Info Object: `title` and `version`, and optionally `summary`, `description`, `termsOfService`, `contact` and `license`.
 - `tags` is copied to the document's top-level `tags`. Use it to describe the tags operations use and to set their order.
 - `middlewareSecurity` maps a named middleware, such as `middleware.auth()`, to a key of `securitySchemes`. Routes behind it get the scheme in `security` and a `401` response. A route behind several mapped middleware, such as `middleware.auth()` and `middleware.tenant()`, requires all their schemes together: they share one Security Requirement Object.
+- `errorResponse` is the body of every error response without a documented one, as a type expression such as `"import('#types/api').ApiError"`. Without it, that body is read from the exception handler. See [Error bodies](#error-bodies).
 
 ## Serve a docs page
 
@@ -233,10 +234,11 @@ export default class UsersController {
 - The first paragraph is the `summary`. The next paragraphs and `@remarks` are the `description`.
 - `@deprecated` marks the operation as deprecated.
 - `@tags Users, Admin` sets the operation tags. On the class, it applies to every method. A method's own `@tags` replaces the class tags. Without either, the tag is the first segment of the route name.
-- `@throws {404} User not found` adds a `404` response with that description. Without a description, the standard status text is used. A tag that can't be documented, such as a name not in scope or a class with no status code, is skipped with a warning from `openapi:generate`.
+- `@throws {404} User not found` adds a `404` response with that description and the body of the [exception handler](#error-bodies). Without a description, the standard status text is used. When several tags document one status code, their descriptions are joined with `; `. A tag that can't be documented, such as a name not in scope or a class with no status code, is skipped with a warning from `openapi:generate`.
 - `@throws {SmsRejectedException}` adds the response of an exception class. See [Exception responses](#exception-responses).
 - `@throws {SmsRejectedException | InvalidAttachmentException}` adds the response of each class in the union, each under its own status code.
-- `@requestBody {TypeName}` sets the request body schema from a type in scope in the controller file. Use it when the handler reads the body without a validator, such as a webhook payload. It replaces the body the validator would document.
+- `@throws {import('#exceptions/user_disabled_exception').default}` names a class without importing it, such as one an action or a service throws. It works for any export: `import('#exceptions/errors').E_LOCKED`.
+- `@requestBody {TypeName}` sets the request body schema from a type in scope in the controller file, or from `{import('#types/webhooks').MailEvent}`. Use it when the handler reads the body without a validator, such as a webhook payload. It replaces the body the validator would document.
 
 ## Exception responses
 
@@ -247,6 +249,8 @@ An exception class named by `@throws` documents its status code and its body:
 - A class whose `handle()` sends nothing still adds the response of its `static status`, with `toResponse()` as the body when it has one.
 
 `handle()` is read with the functions of the app it calls, such as a shared `renderError(ctx, error)`. Functions from packages are not followed, and only calls on an `HttpResponse` count.
+
+The handler does not need `@throws` for an exception it throws itself: `throw new EmailTakenException(email)` in the handler, or in a function of the app it calls, documents the class's response the same way.
 
 ```ts
 export default class SmsRejectedException extends Exception {
@@ -277,17 +281,70 @@ export default class EmailTakenException extends Exception {
 }
 ```
 
-The class must be in scope in the controller file, usually through the import the handler throws it with. When several exceptions share a status code, or an exception uses `422` on a route that validates its input, the body schema is a `oneOf` of each body and `ValidationError`.
+The class must be in scope in the controller file, usually through the import the handler throws it with, or named with `import('...')`. When several exceptions share a status code, or an exception uses `422` on a route that validates its input, the body schema is a `oneOf` of each distinct body and `ValidationError`.
+
+A class from a package only documents a status its declaration types as a literal. `E_ROW_NOT_FOUND` from `@adonisjs/lucid/errors` declares `status: number`, so document the `404` of `findOrFail()` with `@throws {404}`.
+
+## Error bodies
+
+An error status with no body of its own, such as `@throws {404}`, the `401` of a secured route or an exception without `handle()`, gets the body the app's exception handler sends. The generator reads the handler `start/kernel.ts` registers with `server.errorHandler()`, or `#exceptions/handler`:
+
+```ts
+export default class HttpExceptionHandler extends ExceptionHandler {
+  override async renderErrorAsJSON(error: Exception, ctx: HttpContext) {
+    ctx.response
+      .status(error.status)
+      .send({ code: error.code ?? 'E_UNKNOWN', message: error.message })
+  }
+}
+```
+
+- What `handle()` and `renderErrorAsJSON()` send, with the functions of the app they call, is the body of every such status. It becomes the `Error` schema in `components.schemas`.
+- A response helper with a body, such as `ctx.response.tooManyRequests(body)` for `E_TOO_MANY_REQUESTS`, is the body of that status only.
+- A handler that overrides neither sends the framework's `{ message: string }`.
+- The `401` of a secured route gets the `{ errors: [{ message }] }` that `E_UNAUTHORIZED_ACCESS` from `@adonisjs/auth` renders for a client that accepts JSON, unless the handler answers `401` with a helper of its own.
+- `errorResponse` in the config replaces all of the above.
+
+## Middleware responses
+
+A middleware that ends the request documents its response on every route it runs on: the named middleware a route uses and the ones `router.use()` and `server.use()` register in `start/kernel.ts`. Its `handle()` is read like an exception's, so `response.forbidden(body)` or `response.status(403).send(body)` adds a `403` with that body. An exception it throws, such as `throw new TwoFactorRequiredException()`, adds the response of that class, and `response.abort()` and `response.redirect()` add theirs. Middleware from packages are not read.
+
+```ts
+export default class TenantMiddleware {
+  async handle(ctx: HttpContext, next: NextFn) {
+    if (!ctx.request.header('x-tenant-id')) {
+      return ctx.response.badRequest({
+        code: 'E_INVALID_TENANT_HEADER' as const,
+        message: 'Missing tenant',
+      })
+    }
+
+    return next()
+  }
+}
+```
 
 ## Status codes
 
-A response comes from each status code the handler can return:
+A response comes from each status code the handler can answer with. Branches that share a status code are merged, with a `oneOf` of their bodies:
 
-- `return serialize(...)` or a plain object is a `200`.
+- `return serialize(...)` or a plain object is a `200`, or the status of a `response.status(201)` called before it. `return response.json(body)` works the same way.
 - `return response.created(await serialize(...))` is a `201` with the serialized body. Every `HttpResponse` helper that sets a 2xx, 4xx or 5xx status works this way, such as `noContent()`, `accepted()` or `notFound(body)`. This uses the same types Tuyau adds to `HttpResponse`, and works without Tuyau too.
+- A helper or `response.send(body)` called without `return` counts too, since the handler's own response calls are read along with its return type.
+- `return null` is a `204` with no body. When the return type also includes `undefined`, the description says the response can have no body.
+- `response.redirect(...)` is a `302`, or the status passed to it, with a `Location` header.
+- `response.abort(body, 403)`, `abortIf()` and `abortUnless()` add their status with that body, or `400` without a status.
 - `204`, `205` and `304` responses, and helpers called without a body, have no `content`.
-- A `@throws` tag adds its status code when the return type has not.
+- A `@throws` tag adds its status code, and its description replaces the standard status text.
 - Routes that validate their input get a `422`. Routes behind a middleware mapped in `middlewareSecurity` get a `401`.
+- A middleware of the route that answers with a status adds it. See [Middleware responses](#middleware-responses).
+- A handler with no typed answer gets a `200` with no schema and a warning. A handler that only answers with errors, such as `return response.tooManyRequests(body)`, gets no `200`.
+
+## Media types and headers
+
+- A returned string is sent as `text/plain`. A literal `response.header('content-type', 'text/csv')` in the handler replaces the media type of its bodies.
+- `response.download()`, `attachment()` and `stream()` are documented as `application/octet-stream` with `format: binary`. `attachment()` adds a `Content-Disposition` header.
+- A header the handler sets with a literal name, such as `response.header('Retry-After', '10')`, is documented on every response the handler sends, but not on the response of an exception it throws.
 
 ## Named schemas
 
@@ -297,16 +354,22 @@ When `.adonisjs/client/data.d.ts` exists, every type in its `Data` namespace bec
 
 ## How types become schemas
 
-- A route must have a name and a controller handler. Closure routes are skipped.
-- On `GET` routes, the validator fields become query parameters. On other methods they become the body, and the validator's `query` and `params` objects become query and path parameters.
+- A route must have a name and a controller handler. Closure routes are skipped with a warning, except the ones `openapiRoutes()` registers.
+- On `GET` operations, the validator fields become query parameters. On other methods they become the body, and the validator's `query` and `params` objects become query and path parameters. A route that answers `GET` and `POST` gets one of each.
+- An object query parameter uses `style: deepObject`, as the app reads `filter[status]=x`.
+- An optional path parameter, `/users/:id?`, documents both `/users` and `/users/{id}`. The shorter path's `operationId` ends with `.without_id`.
+- A `HEAD`-only route is left out.
 - A body with a `vine.file()` field is sent as `multipart/form-data`.
 - When VineJS cannot describe a field (a file, a custom rule), the generator uses the field's TypeScript type.
 - `Date` and Luxon `DateTime` values become `{ type: 'string', format: 'date-time' }`.
-- A handler that returns a model or an untyped object produces a `200` response with no schema and a warning. Return `serialize(...)` to type it.
+- `Map` and `Set` become an empty object and `bigint` a string, as they serialize. Symbol keys and properties typed `undefined` are left out.
+- A Lucid model returned directly becomes `{}` with a warning, because its type does not describe what `serialize()` sends. Return it through a transformer.
 
 ## Limitations
 
-- A status code set with `response.status(201)` is not detected, because the return type does not carry it. Return a helper such as `response.created(body)` instead.
-- A thrown exception has no return type either. Add a `@throws` tag for each status code it can produce, such as the `404` of `findOrFail()`, or for each exception class it throws.
-- A nested transformer is matched to its named schema by shape. Two transformers with the same output share the first schema name.
-- Every type in `Data` is written to `components.schemas`, even if no route returns it.
+Known cases where the document differs from what the app sends. They are tracked in [#19](https://github.com/enzopita/adonisjs-packages/issues/19); until fixed, document them with `@throws` or avoid the pattern.
+
+- A bouncer `authorize()` `403` is not documented: the exception is thrown inside `@adonisjs/bouncer`, and functions from packages are not followed. Use `@throws {403}`.
+- `download()` and `attachment()` are documented as `application/octet-stream`; the app sends the media type of the file's extension.
+- The paginator `metadata` fields are typed `string` by Lucid's `SimplePaginatorMetaKeys`, so they are documented as strings; the app sends numbers and `null`.
+- An array in a `GET` validator rejects a single value (`?tags=a`) with a `422`; send the key twice.

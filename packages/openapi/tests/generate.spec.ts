@@ -2,11 +2,21 @@ import { execFile } from 'node:child_process'
 import { readFile, rm } from 'node:fs/promises'
 import { promisify } from 'node:util'
 import { test } from '@japa/runner'
-import type { OpenApiDocument } from '../src/types.ts'
+import type { JsonSchema, OpenApiDocument, OpenApiResponse } from '../src/types.ts'
 
 const playground = new URL('../../../playground/', import.meta.url)
 const output = 'tmp/openapi.spec.json'
 const run = promisify(execFile)
+
+const json = (response: OpenApiResponse | undefined) =>
+  response!.content!['application/json']!.schema
+
+const object = (properties: Record<string, JsonSchema>): JsonSchema => ({
+  type: 'object',
+  properties,
+  additionalProperties: false,
+  required: Object.keys(properties),
+})
 
 test.group('openapi:generate on the playground app', group => {
   let document: OpenApiDocument
@@ -22,6 +32,9 @@ test.group('openapi:generate on the playground app', group => {
     return () => rm(new URL(output, playground))
   })
 
+  const probe = (path: string, method: 'get' | 'post' = 'get') =>
+    document.paths[`/api/v1/probe/${path}`]![method]!
+
   test('documents every named route and skips closures', ({ assert }) => {
     assert.equal(document.openapi, '3.1.0')
     assert.sameMembers(Object.keys(document.paths), [
@@ -33,7 +46,30 @@ test.group('openapi:generate on the playground app', group => {
       '/api/v1/users',
       '/api/v1/users/{id}',
       '/api/v1/webhooks/mail',
+      '/api/v1/probe/branches',
+      '/api/v1/probe/empty',
+      '/api/v1/probe/maybe',
+      '/api/v1/probe/back',
+      '/api/v1/probe/text',
+      '/api/v1/probe/csv',
+      '/api/v1/probe/json-created',
+      '/api/v1/probe/limited',
+      '/api/v1/probe/sent',
+      '/api/v1/probe/aborted',
+      '/api/v1/probe/download',
+      '/api/v1/probe/attachment',
+      '/api/v1/probe/stream',
+      '/api/v1/probe/thrown',
+      '/api/v1/probe/verified',
+      '/api/v1/probe/model',
+      '/api/v1/probe/collections',
+      '/api/v1/probe/search',
+      '/api/v1/probe/items',
+      '/api/v1/probe/items/{id}',
+      '/api/v1/probe/echo',
     ])
+    assert.include(logs, 'probe.closure: closure handlers have no types to read')
+    assert.notInclude(logs, 'openapi.ui')
   })
 
   test('takes body constraints from the VineJS validator', ({ assert }) => {
@@ -120,10 +156,39 @@ test.group('openapi:generate on the playground app', group => {
     assert.deepEqual(document.paths['/api/v1/account/profile']!.get!.tags, ['profile'])
   })
 
-  test('documents the status codes named by @throws', ({ assert }) => {
+  test('documents the status codes named by @throws with the exception handler body', ({
+    assert,
+  }) => {
     assert.deepEqual(document.paths['/api/v1/users/{id}']!.get!.responses['404'], {
       description: 'User not found',
+      content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
     })
+    assert.deepEqual(document.components.schemas.Error, {
+      type: 'object',
+      properties: { code: { type: 'string' }, message: { type: 'string' } },
+      required: ['code', 'message'],
+      additionalProperties: false,
+    })
+  })
+
+  test('documents what a route middleware answers with', ({ assert }) => {
+    assert.deepEqual(document.paths['/api/v1/account/avatar']!.put!.responses['400'], {
+      description: 'Bad Request',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              code: { type: 'string', const: 'E_INVALID_TENANT_HEADER' },
+              message: { type: 'string' },
+            },
+            required: ['code', 'message'],
+            additionalProperties: false,
+          },
+        },
+      },
+    })
+    assert.notProperty(document.paths['/api/v1/account/profile']!.get!.responses, '400')
   })
 
   test('documents the status and body of an exception named by @throws', ({ assert }) => {
@@ -178,9 +243,31 @@ test.group('openapi:generate on the playground app', group => {
     })
   })
 
-  test('adds the 401 response to routes behind a security scheme', ({ assert }) => {
+  test('adds the 401 response E_UNAUTHORIZED_ACCESS renders to routes behind a security scheme', ({
+    assert,
+  }) => {
     assert.deepEqual(document.paths['/api/v1/account/profile']!.get!.responses['401'], {
       description: 'Unauthorized',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              errors: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  properties: { message: { type: 'string' } },
+                  additionalProperties: false,
+                  required: ['message'],
+                },
+              },
+            },
+            additionalProperties: false,
+            required: ['errors'],
+          },
+        },
+      },
     })
     assert.notProperty(document.paths['/api/v1/auth/login']!.post!.responses, '401')
   })
@@ -207,7 +294,9 @@ test.group('openapi:generate on the playground app', group => {
     )
   })
 
-  test('documents each exception of a union @throws under its own status', ({ assert }) => {
+  test('documents each exception of a union @throws under its own status, also when named by import()', ({
+    assert,
+  }) => {
     const conflict = document.paths['/api/v1/auth/signup']!.post!.responses['409']!
 
     assert.deepEqual(conflict.content!['application/json']!.schema, {
@@ -224,6 +313,135 @@ test.group('openapi:generate on the playground app', group => {
   test('reads the response helper an exception answers with in its handle()', ({ assert }) => {
     assert.notInclude(logs, '@throws')
     assert.property(document.paths['/api/v1/auth/signup']!.post!.responses, '409')
+  })
+
+  test('merges the branches that answer with one status code', ({ assert }) => {
+    const responses = probe('branches').responses
+
+    assert.sameMembers(Object.keys(responses), ['200', '201'])
+    assert.deepEqual(json(responses['200']).oneOf, [
+      object({ data: object({ serialized: { type: 'number' } }) }),
+      object({ plain: { type: 'string' } }),
+    ])
+  })
+
+  test('answers 204 for null and marks a body that can be absent', ({ assert }) => {
+    assert.deepEqual(probe('empty').responses, { '204': { description: 'No Content' } })
+    assert.equal(probe('maybe').responses['200']!.description, 'OK, or no body')
+    assert.deepEqual(json(probe('maybe').responses['200']), object({ found: { type: 'boolean' } }))
+  })
+
+  test('documents a redirect as 302 with a Location header', ({ assert }) => {
+    assert.deepEqual(probe('back').responses, {
+      '302': { description: 'Found', headers: { Location: { schema: { type: 'string' } } } },
+    })
+  })
+
+  test('sends a string as text/plain unless the handler sets the content-type', ({ assert }) => {
+    assert.deepEqual(probe('text').responses['200']!.content, {
+      'text/plain': { schema: { type: 'string' } },
+    })
+    assert.deepEqual(probe('csv').responses['200']!.content, {
+      'text/csv': { schema: { type: 'string' } },
+    })
+  })
+
+  test('keeps the status set before json()', ({ assert }) => {
+    const responses = probe('json-created', 'post').responses
+
+    assert.sameMembers(Object.keys(responses), ['201'])
+    assert.deepEqual(json(responses['201']), object({ id: { type: 'number' } }))
+  })
+
+  test('documents a handler that only answers with an error, with the headers it sets', ({
+    assert,
+  }) => {
+    assert.deepEqual(probe('limited').responses, {
+      '429': {
+        description: 'Too Many Requests',
+        headers: { 'Retry-After': { schema: { type: 'string' } } },
+        content: { 'application/json': { schema: object({ message: { type: 'string' } }) } },
+      },
+    })
+    assert.notInclude(logs, 'probe.probe.limited')
+  })
+
+  test('reads the response calls of the handler', ({ assert }) => {
+    assert.deepEqual(
+      json(probe('sent', 'post').responses['202']),
+      object({ queued: { type: 'boolean' } }),
+    )
+    assert.sameMembers(Object.keys(probe('aborted').responses), ['403', '410'])
+    assert.deepEqual(
+      json(probe('aborted').responses['403']),
+      object({ message: { type: 'string' } }),
+    )
+  })
+
+  test('documents files and streams as binary', ({ assert }) => {
+    const binary = { 'application/octet-stream': { schema: { type: 'string', format: 'binary' } } }
+
+    assert.deepEqual(probe('download').responses['200']!.content, binary)
+    assert.deepEqual(probe('stream').responses['200']!.content, binary)
+    assert.deepEqual(probe('attachment').responses['200'], {
+      description: 'OK',
+      headers: { 'Content-Disposition': { schema: { type: 'string' } } },
+      content: binary,
+    })
+  })
+
+  test('documents the exceptions the handler and its middleware throw', ({ assert }) => {
+    assert.deepEqual(
+      json(probe('thrown').responses['409']),
+      object({ code: { type: 'string', const: 'E_EMAIL_TAKEN' }, message: { type: 'string' } }),
+    )
+    assert.deepEqual(
+      json(probe('verified').responses['403']),
+      object({
+        code: { type: 'string', const: 'E_EMAIL_NOT_VERIFIED' },
+        message: { type: 'string' },
+      }),
+    )
+  })
+
+  test('emits {} and a warning for a Lucid model', ({ assert }) => {
+    assert.deepEqual(json(probe('model').responses['200']), {})
+    assert.include(logs, 'User is a Lucid model')
+  })
+
+  test('documents Map and Set as empty objects and bigint as a string', ({ assert }) => {
+    const empty = { type: 'object', properties: {}, additionalProperties: false }
+
+    assert.deepEqual(
+      json(probe('collections').responses['200']),
+      object({ tags: empty, counts: empty, total: { type: 'string' } }),
+    )
+  })
+
+  test('sends an object query param as a deepObject', ({ assert }) => {
+    assert.containsSubset(probe('search').parameters, [
+      { name: 'filter', in: 'query', style: 'deepObject', explode: true },
+    ])
+  })
+
+  test('documents the path without an optional param', ({ assert }) => {
+    assert.deepEqual(document.paths['/api/v1/probe/items/{id}']!.get!.parameters, [
+      { name: 'id', in: 'path', required: true, schema: { type: 'string' } },
+    ])
+    assert.isUndefined(probe('items').parameters)
+    assert.equal(probe('items').operationId, 'probe.probe.item.without_id')
+  })
+
+  test('reads the input of each method of a route on its own', ({ assert }) => {
+    assert.deepEqual(probe('echo').parameters, [
+      { name: 'message', in: 'query', required: true, schema: { type: 'string' } },
+    ])
+    assert.isUndefined(probe('echo').requestBody)
+    assert.isUndefined(probe('echo', 'post').parameters)
+    assert.deepEqual(
+      probe('echo', 'post').requestBody!.content['application/json']!.schema.properties,
+      { message: { type: 'string' } },
+    )
   })
 
   test('writes the tags from the config', ({ assert }) => {

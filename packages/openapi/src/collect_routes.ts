@@ -5,6 +5,9 @@ import type { HttpMethod, OpenApiConfig, RouteMatcher, RouteOperation } from './
 
 const METHODS = new Set<string>(['get', 'post', 'put', 'patch', 'delete', 'options'])
 
+// The closures `openapiRoutes()` registers, which are left out on purpose.
+const DOCS_ROUTES = new Set(['openapi.ui', 'openapi.document'])
+
 function matches(routeName: string, matcher: RouteMatcher) {
   if (matcher instanceof RegExp) return matcher.test(routeName)
 
@@ -29,6 +32,22 @@ function toOpenApiPath(pattern: string) {
 }
 
 /**
+ * `/users/:id?` also matches `/users`, which OpenAPI only describes as a path of its own: each
+ * optional param gives the path that ends before it.
+ */
+function withoutOptionalParams(pattern: string) {
+  const segments = pattern.split('/')
+
+  return segments.flatMap((segment, index) => {
+    const optional = /^:(.+)\?$/.exec(segment)
+
+    return optional
+      ? [{ pattern: segments.slice(0, index).join('/') || '/', omitted: optional[1]! }]
+      : []
+  })
+}
+
+/**
  * Scans the committed router with the same routes scanner the dev server feeds
  * Tuyau, so both see the same request and response types.
  */
@@ -36,6 +55,7 @@ export async function collectRoutes(
   appRoot: string,
   router: Router,
   config: OpenApiConfig,
+  warnings: string[],
 ): Promise<RouteOperation[]> {
   const live = router.toJSON()
   const middlewareByRoute = new Map<string, string[]>()
@@ -50,7 +70,16 @@ export async function collectRoutes(
 
   // A closure has no types to read, and the scanner keeps it when it is named.
   const controllerRoutes = Object.values(live).map(routes =>
-    routes.filter(route => !(route.handler instanceof Function)),
+    routes.filter(route => {
+      if (!(route.handler instanceof Function)) return true
+
+      if (!DOCS_ROUTES.has(route.name ?? '') && isIncluded(route.name ?? '', config.routes))
+        warnings.push(
+          `${route.name ?? `${route.methods.join(',')} ${route.pattern}`}: closure handlers have no types to read, the route is skipped`,
+        )
+
+      return false
+    }),
   )
 
   // Round-tripped through JSON like the dev server and `node ace codegen` do.
@@ -60,17 +89,16 @@ export async function collectRoutes(
 
   for (const routes of serialized) await scanner.scan(routes)
 
-  return scanner.getScannedRoutes().map(route => {
-    const pattern = toOpenApiPath(route.pattern)
+  return scanner.getScannedRoutes().flatMap(route => {
     const [validator] = route.validators ?? []
 
-    return {
+    const methods = route.methods
+      .map(method => method.toLowerCase())
+      .filter((method): method is HttpMethod => METHODS.has(method))
+
+    const operation = {
       name: route.name,
-      methods: route.methods
-        .map(method => method.toLowerCase())
-        .filter((method): method is HttpMethod => METHODS.has(method)),
-      path: pattern,
-      pathParams: [...pattern.matchAll(/\{([^}]+)\}/g)].map(match => match[1]!),
+      methods,
       middleware:
         middlewareByRoute.get(`${route.domain}:${route.pattern}:${route.methods.join(',')}`) ?? [],
       requestType: route.request?.type,
@@ -85,5 +113,27 @@ export async function collectRoutes(
         method: route.controller.method,
       },
     }
+
+    // A `HEAD`-only route has no operation to document.
+    if (!methods.length) return []
+
+    const variants = [
+      { pattern: route.pattern, operationId: route.name },
+      ...withoutOptionalParams(route.pattern).map(({ pattern, omitted }) => ({
+        pattern,
+        operationId: `${route.name}.without_${omitted}`,
+      })),
+    ]
+
+    return variants.map(({ pattern, operationId }): RouteOperation => {
+      const path = toOpenApiPath(pattern)
+
+      return {
+        ...operation,
+        operationId,
+        path,
+        pathParams: [...path.matchAll(/\{([^}]+)\}/g)].map(match => match[1]!),
+      }
+    })
   })
 }
