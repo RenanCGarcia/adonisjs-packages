@@ -25,8 +25,8 @@ export interface ThrownResponse {
   description: string
   bodies: ts.Type[]
   /**
-   * A tag such as `@throws {403}` names a status the app's exception handler renders, so its body
-   * joins the others the status has.
+   * A tag such as `@throws {403}` names a status the app's exception handler renders. Its body is
+   * documented when the action sends none of its own for that status.
    */
   rendered: boolean
 }

@@ -70,6 +70,9 @@ export default class ProbeController {
     response.stream(Readable.from(['a', 'b']))
   }
 
+  /**
+   * @throws {409} The email is taken
+   */
   async thrown({ request }: HttpContext) {
     if (request.input('email')) throw new EmailTakenException(request.input('email'))
     return { available: true }

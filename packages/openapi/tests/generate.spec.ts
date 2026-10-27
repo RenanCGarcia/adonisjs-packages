@@ -419,6 +419,13 @@ test.group('openapi:generate on the playground app', group => {
     })
   })
 
+  test('keeps a numeric @throws on the body of the exception the handler throws', ({ assert }) => {
+    assert.deepEqual(
+      json(probe('thrown').responses['409']),
+      object({ code: { type: 'string', const: 'E_EMAIL_TAKEN' }, message: { type: 'string' } }),
+    )
+  })
+
   test('emits {} and a warning for a Lucid model', ({ assert }) => {
     assert.deepEqual(json(probe('model').responses['200']), {})
     assert.include(logs, 'User is a Lucid model')

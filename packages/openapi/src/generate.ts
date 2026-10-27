@@ -251,7 +251,10 @@ function responsesFor(
     found.reasons.push(description)
     found.bodies.push(...bodies.map(json))
 
-    if (rendered) found.bodies.push(...(byCode.get(code) ?? fallback).map(json))
+    // A tag that describes an exception the action throws already has its body. Middleware bodies
+    // are added later, so they never hide the handler's.
+    if (rendered && !found.bodies.length)
+      found.bodies.push(...(byCode.get(code) ?? fallback).map(json))
   }
 
   // The validator's error shares the status code an exception documents, so the body is either.
