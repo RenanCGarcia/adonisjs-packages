@@ -77,6 +77,10 @@ router
           .get('screened', [controllers.Probe, 'authorized'])
           .as('screened')
           .use(middleware.verifiedEmail())
+        router
+          .get('managed', [controllers.Probe, 'text'])
+          .as('managed')
+          .use(middleware.managesProbe())
         router.get('viewed', [controllers.Probe, 'viewed'])
         router.get('hidden', [controllers.Probe, 'hidden'])
         router.get('users/:id', [controllers.Probe, 'found'])

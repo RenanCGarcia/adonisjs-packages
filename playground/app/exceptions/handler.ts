@@ -6,6 +6,7 @@ import { type HttpContext, ExceptionHandler } from '@adonisjs/core/http'
 import PlanLimitException from '#exceptions/plan_limit_exception'
 import SeatLimitException from '#exceptions/seat_limit_exception'
 import MaintenanceException from '#exceptions/maintenance_exception'
+import DisposableEmailException from '#exceptions/disposable_email_exception'
 
 export default class HttpExceptionHandler extends ExceptionHandler {
   /**
@@ -40,6 +41,16 @@ export default class HttpExceptionHandler extends ExceptionHandler {
         code: error.code ?? 'E_LIMIT',
         message: error.message,
         upgradeUrl: '/billing',
+      })
+    }
+
+    if (
+      error instanceof DisposableEmailException &&
+      ctx.request.header('x-hide-domain') === 'true'
+    ) {
+      return ctx.response.status(error.status).send({
+        code: 'E_DISPOSABLE_EMAIL' as const,
+        message: 'Use another email address',
       })
     }
 

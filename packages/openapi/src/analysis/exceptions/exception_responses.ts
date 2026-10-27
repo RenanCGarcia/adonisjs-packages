@@ -29,6 +29,18 @@ function fromBranch({ answers }: HandlerBranch, codes: string[]): Thrown[] {
   return [...thrown].map(([code, bodies]) => ({ code, bodies }))
 }
 
+function withFallThrough(fallThrough: HandlerBranch[], codes: string[], rest: Thrown[]) {
+  const thrown = new Map<string, ts.Type[]>()
+
+  for (const { code, bodies } of [
+    ...fallThrough.flatMap(branch => fromBranch(branch, codes)),
+    ...rest,
+  ])
+    thrown.set(code, [...(thrown.get(code) ?? []), ...bodies])
+
+  return [...thrown].map(([code, bodies]) => ({ code, bodies }))
+}
+
 /**
  * What the app sends when an exception reaches its exception handler.
  */
@@ -60,15 +72,15 @@ export class ExceptionResponses {
   }
 
   /**
-   * The first branch whose `instanceof` names the exception, its class or a class it extends, and
-   * that sends a response: one that sends nothing, such as one that only sets a header, falls
-   * through to the next. A constant such as `E_ROW_NOT_FOUND` only matches itself: `createError()`
-   * types every constant it makes as the same `Exception`.
+   * The branches whose `instanceof` names the exception, its class or a class it extends, and that
+   * send a response, up to the first that does not fall through: one that sends nothing, such as one
+   * that only sets a header, falls through to the next. A constant such as `E_ROW_NOT_FOUND` only
+   * matches itself: `createError()` types every constant it makes as the same `Exception`.
    */
-  #branch(branches: HandlerBranch[], exception: ExceptionType) {
+  #branches(branches: HandlerBranch[], exception: ExceptionType) {
     const extended = lineage(this.#checker, exception.instance)
 
-    return branches.find(({ symbol, answers }) => {
+    const matching = branches.filter(({ symbol, answers }) => {
       if (!answers.length) return false
 
       const named =
@@ -81,6 +93,13 @@ export class ExceptionResponses {
         (named && named.flags & ts.SymbolFlags.Class && extended.has(named))
       )
     })
+
+    const last = matching.findIndex(({ fallsThrough }) => !fallsThrough)
+
+    return {
+      fallsThrough: last === -1 ? matching : matching.slice(0, last),
+      branch: last === -1 ? undefined : matching[last],
+    }
   }
 
   #packagedBody(exception: ExceptionType, codes: string[]) {
@@ -110,8 +129,21 @@ export class ExceptionResponses {
 
     if (!codes.length) return []
 
-    const handled = this.#branch(this.#handler.handled, exception)
+    const handled = this.#branches(this.#handler.handled, exception)
 
+    return withFallThrough(
+      handled.fallsThrough,
+      codes,
+      this.#afterFallThrough(exception, codes, own, handled.branch),
+    )
+  }
+
+  #afterFallThrough(
+    exception: ExceptionType,
+    codes: string[],
+    own: Thrown[],
+    handled?: HandlerBranch,
+  ) {
     if (handled) return fromBranch(handled, codes)
 
     const handle = ownHandler(this.#checker, exception.instance)
@@ -120,9 +152,13 @@ export class ExceptionResponses {
 
     if (handle === 'unread') return this.#packagedBody(exception, codes)
 
-    const rendered = this.#branch(this.#handler.rendered, exception)
+    const rendered = this.#branches(this.#handler.rendered, exception)
 
-    return rendered ? fromBranch(rendered, codes) : bodiesFor(codes, this.generic)
+    return withFallThrough(
+      rendered.fallsThrough,
+      codes,
+      rendered.branch ? fromBranch(rendered.branch, codes) : bodiesFor(codes, this.generic),
+    )
   }
 
   thrownAnswers(throws: ts.NewExpression[]): Answer[] {

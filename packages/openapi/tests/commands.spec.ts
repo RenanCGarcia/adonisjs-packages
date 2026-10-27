@@ -75,6 +75,17 @@ test.group('openapi:generate --explain', () => {
     assert.notInclude(`${throttled.stdout}${throttled.stderr}`, 'OA-R003 probe.throttled')
   })
 
+  test('names the middleware whose handle() calls a thrower', async ({ assert }) => {
+    const { stdout } = await run('node', ['ace', 'openapi:generate', '--explain=probe.managed'], {
+      cwd: playground,
+    })
+
+    assert.include(
+      stdout,
+      '403\n  the middleware #middleware/manages_probe_middleware (app/middleware/manages_probe_middleware.ts:',
+    )
+  })
+
   test('names a function passed to .use() as closure', async ({ assert }) => {
     const { stdout } = await run('node', ['ace', 'openapi:generate', '--explain=probe.secret'], {
       cwd: playground,

@@ -119,7 +119,7 @@ export class ConfiguredErrors {
             location: this.#location(call),
           }
 
-          return entry.responses.map(thrown => ({ ...thrown, source, owner: entry.owner }))
+          return entry.responses.map(thrown => ({ ...thrown, call, source, owner: entry.owner }))
         }),
     )
   }

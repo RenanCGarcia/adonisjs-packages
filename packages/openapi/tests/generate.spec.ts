@@ -45,6 +45,7 @@ test.group('openapi:generate on the playground app: the document', group => {
       '/api/v1/probe/reasoned',
       '/api/v1/probe/authorized',
       '/api/v1/probe/screened',
+      '/api/v1/probe/managed',
       '/api/v1/probe/viewed',
       '/api/v1/probe/hidden',
       '/api/v1/probe/users/{id}',

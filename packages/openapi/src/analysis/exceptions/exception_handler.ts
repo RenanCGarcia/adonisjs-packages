@@ -9,6 +9,7 @@ import { answersOf, type Answer } from '../answers.ts'
 export interface HandlerBranch {
   symbol: ts.Symbol
   answers: Answer[]
+  fallsThrough: boolean
 }
 
 export interface ExceptionHandlerAnswers {
@@ -28,16 +29,29 @@ export interface ExceptionHandlerAnswers {
 
 /**
  * The classes a condition such as `error instanceof A || error instanceof B` names, or none when
- * it also checks something else, such as a `code` or a status, which names no class.
+ * one side of an `||` names no class, such as a check of a `code` or a status.
  */
-function instanceofClasses(condition: ts.Expression): ts.Expression[] | undefined {
+export function instanceofClasses(
+  condition: ts.Expression,
+): { name: ts.Expression; fallsThrough: boolean }[] | undefined {
   while (ts.isParenthesizedExpression(condition)) condition = condition.expression
 
   if (!ts.isBinaryExpression(condition)) return undefined
 
-  if (condition.operatorToken.kind === ts.SyntaxKind.InstanceOfKeyword) return [condition.right]
+  const operator = condition.operatorToken.kind
 
-  if (condition.operatorToken.kind !== ts.SyntaxKind.BarBarToken) return undefined
+  if (operator === ts.SyntaxKind.InstanceOfKeyword)
+    return [{ name: condition.right, fallsThrough: false }]
+
+  if (operator === ts.SyntaxKind.AmpersandAmpersandToken) {
+    const classes = [condition.left, condition.right].flatMap(side =>
+      (instanceofClasses(side) ?? []).map(({ name }) => ({ name, fallsThrough: true })),
+    )
+
+    return classes.length ? classes : undefined
+  }
+
+  if (operator !== ts.SyntaxKind.BarBarToken) return undefined
 
   const left = instanceofClasses(condition.left)
   const right = instanceofClasses(condition.right)
@@ -46,14 +60,19 @@ function instanceofClasses(condition: ts.Expression): ts.Expression[] | undefine
 }
 
 function instanceofBranches(checker: ts.TypeChecker, body: ts.Node) {
-  const branches: { symbol: ts.Symbol; body: ts.Statement }[] = []
+  const branches: { symbol: ts.Symbol; body: ts.Statement; fallsThrough: boolean }[] = []
 
   const visit = (node: ts.Node) => {
     if (ts.isIfStatement(node))
-      for (const name of instanceofClasses(node.expression) ?? []) {
+      for (const { name, fallsThrough } of instanceofClasses(node.expression) ?? []) {
         const symbol = checker.getSymbolAtLocation(name)
 
-        if (symbol) branches.push({ symbol: aliased(checker, symbol), body: node.thenStatement })
+        if (symbol)
+          branches.push({
+            symbol: aliased(checker, symbol),
+            body: node.thenStatement,
+            fallsThrough,
+          })
       }
 
     ts.forEachChild(node, visit)
@@ -66,8 +85,8 @@ function instanceofBranches(checker: ts.TypeChecker, body: ts.Node) {
 
 /**
  * What the app's exception handler answers with, read from its `handle()` and
- * `renderErrorAsJSON()`. A condition made of `instanceof` checks alone, joined by `||`, makes a
- * branch for each class.
+ * `renderErrorAsJSON()`. A condition made of `instanceof` checks joined by `||` makes a branch for
+ * each class.
  */
 export function exceptionHandlerAnswers(
   checker: ts.TypeChecker,
@@ -79,8 +98,9 @@ export function exceptionHandlerAnswers(
     const skip = new Set<ts.Node>(branches.map(({ body }) => body))
 
     return {
-      branches: branches.map(({ symbol, body }) => ({
+      branches: branches.map(({ symbol, body, fallsThrough }) => ({
         symbol,
+        fallsThrough,
         answers: answersOf(checker, responseCalls(checker, [body]).calls),
       })),
       generic: answersOf(checker, responseCalls(checker, bodies, skip).calls).filter(

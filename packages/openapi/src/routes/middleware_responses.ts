@@ -44,8 +44,8 @@ export class MiddlewareResponses {
   }
 
   /**
-   * An answer of the middleware's own belongs to its class, `owner`, and a thrown one to the
-   * class of the exception.
+   * An answer of the middleware's own belongs to its class, `owner`, and a thrown one, or one of a
+   * call an `errors.throwers` key names, to the class of the exception.
    */
   #read(bodies: ts.Node[], owner?: ts.Symbol): Answer[] {
     const read = handlerResponses(this.#checker, bodies)
@@ -53,6 +53,11 @@ export class MiddlewareResponses {
     return [
       ...read.answers.map(answer => ({ ...answer, owner })),
       ...this.#exceptions.thrownAnswers(read.throws),
+      ...this.#errors
+        .throwerResponses(read.invoked)
+        .flatMap(({ code, bodies, call, owner }) =>
+          (bodies.length ? bodies : [undefined]).map(body => ({ code, body, node: call, owner })),
+        ),
     ]
   }
 

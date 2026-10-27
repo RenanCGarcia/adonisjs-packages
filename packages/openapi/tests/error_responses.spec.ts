@@ -85,6 +85,15 @@ test.group('openapi:generate on the playground app: exceptions, middleware and t
         properties: {
           code: { type: 'string', const: 'E_DISPOSABLE_EMAIL' },
           message: { type: 'string' },
+        },
+        required: ['code', 'message'],
+        additionalProperties: false,
+      },
+      {
+        type: 'object',
+        properties: {
+          code: { type: 'string', const: 'E_DISPOSABLE_EMAIL' },
+          message: { type: 'string' },
           domain: { type: 'string' },
         },
         required: ['code', 'message', 'domain'],

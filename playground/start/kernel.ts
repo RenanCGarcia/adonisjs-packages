@@ -49,4 +49,5 @@ export const middleware = router.named({
   auth: () => import('#middleware/auth_middleware'),
   tenant: () => import('#middleware/tenant_middleware'),
   verifiedEmail: () => import('#middleware/verified_email_middleware'),
+  managesProbe: () => import('#middleware/manages_probe_middleware'),
 })
