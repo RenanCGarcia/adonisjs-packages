@@ -357,9 +357,11 @@ router
 
 The generator finds a function passed to `.use()` in the app's sources by the source it has at runtime. It compares every token of the parameters and the body, operators, keywords and literals included, once the types are erased. Semicolons, commas and parentheses are left out, because the compiler that runs the app adds and drops them. `--explain` names the function as `node ace list:routes` does: by its function name, or `closure`.
 
+A method, such as `.use(guard.check)`, a bound function, such as `.use(quota.enforce.bind(quota))`, and a function that uses syntax the compiler rewrites, such as an `enum`, have no source of the app to compare. The generator finds them where V8 says they are declared, through the source map of the code the app runs.
+
 The responses of the function are not documented, and a warning tells why, when:
 
-- No function of the app's sources has its source (`OA-R003`). This is the case for a method, such as `.use(guard.check)`, a bound function, a function from a package, and a function that uses syntax the compiler rewrites, such as an `enum`.
+- Neither its source nor its location leads to a function of the app's sources (`OA-R003`). This is the case for a function from a package.
 - Several functions of the app's sources have its source (`OA-R004`), such as the same closure in two files that import a different class under the same name. The warning lists them.
 
 Register such a middleware as a named middleware, or make the functions differ.

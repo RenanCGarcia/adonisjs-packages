@@ -57,12 +57,28 @@ test.group('openapi:generate on functions passed to .use()', group => {
     }
   })
 
-  test('documents no response of a function the app sources do not have', ({ assert }) => {
-    assert.include(
-      output,
-      "OA-R003 inline.method: the middleware check passed to .use() is not a function of the app's sources, its responses are not documented",
+  test('documents the responses of a method passed to .use()', ({ assert }) => {
+    assert.deepEqual(
+      json(responses('method')['402']),
+      object({ code: { type: 'string', const: 'E_UNPAID' } }),
     )
-    assert.deepEqual(Object.keys(responses('method')), ['200'])
+    assert.notInclude(output, 'OA-R003 inline.method')
+  })
+
+  test('documents the responses of a bound function passed to .use()', ({ assert }) => {
+    assert.deepEqual(
+      json(responses('bound')['429']),
+      object({ code: { type: 'string', const: 'E_QUOTA' } }),
+    )
+    assert.notInclude(output, 'OA-R003 inline.bound')
+  })
+
+  test('documents no response of a function the app sources do not have', ({ assert }) => {
+    assert.match(
+      output,
+      /OA-R003 inline\.packaged: the middleware \w+ passed to \.use\(\) is not a function of the app's sources, its responses are not documented/,
+    )
+    assert.deepEqual(Object.keys(responses('packaged')), ['200'])
   })
 })
 

@@ -116,7 +116,10 @@ export function readApp(
     exceptions,
     configured,
     locate,
-    inlineMiddleware(program),
+    inlineMiddleware(
+      program,
+      routes.flatMap(route => route.inlineMiddleware),
+    ),
   )
 
   return {

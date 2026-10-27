@@ -6,7 +6,7 @@ import { handlerResponses } from '../analysis/handler_responses.ts'
 import { methodBodies } from '../analysis/response_calls.ts'
 import { ambiguousInlineMiddleware, unmatchedInlineMiddleware } from '../diagnostics/route.ts'
 import type { Diagnostic, SourceLocation } from '../types.ts'
-import type { InlineMatch } from './inline_middleware.ts'
+import type { InlineMatch, InlineMiddleware } from './inline_middleware.ts'
 import type { RouteOperation } from './route_operation.ts'
 import type { Kernel } from './kernel.ts'
 
@@ -22,7 +22,7 @@ export class MiddlewareResponses {
   #exceptions: ExceptionResponses
   #errors: ConfiguredErrors
   #locate: (node: ts.Node) => SourceLocation
-  #findInline: (source: string) => InlineMatch
+  #findInline: (middleware: InlineMiddleware) => InlineMatch
   #answers = new Map<string, Answer[]>()
 
   constructor(
@@ -32,7 +32,7 @@ export class MiddlewareResponses {
     exceptions: ExceptionResponses,
     errors: ConfiguredErrors,
     locate: (node: ts.Node) => SourceLocation,
-    findInline: (source: string) => InlineMatch,
+    findInline: (middleware: InlineMiddleware) => InlineMatch,
   ) {
     this.#checker = checker
     this.#kernel = kernel
@@ -87,8 +87,8 @@ export class MiddlewareResponses {
 
     const diagnostics: Diagnostic[] = []
 
-    const inline = route.inlineMiddleware.flatMap(({ name, source }) => {
-      const match = this.#findInline(source)
+    const inline = route.inlineMiddleware.flatMap(({ name, ...runtime }) => {
+      const match = this.#findInline(runtime)
 
       if (match.kind === 'found') return [{ middleware: name, answers: this.#read([match.body]) }]
 

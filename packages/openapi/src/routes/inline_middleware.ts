@@ -1,12 +1,12 @@
 import ts from 'typescript'
 import { isAppSource } from '../analysis/symbols.ts'
+import { type FunctionLocation, locateFunctions } from './function_location.ts'
+import type { RouteOperation } from './route_operation.ts'
 
 type FunctionNode = ts.ArrowFunction | ts.FunctionExpression | ts.FunctionDeclaration
 
-/**
- * The function of the app an inline route middleware was created from, by its runtime source. It
- * is missing when no function of the app has that source, and ambiguous when several have it.
- */
+export type InlineMiddleware = Omit<RouteOperation['inlineMiddleware'][number], 'name'>
+
 export type InlineMatch =
   | { kind: 'found'; body: ts.ConciseBody }
   | { kind: 'missing' }
@@ -134,11 +134,36 @@ function erasedTokens(fn: FunctionNode) {
 }
 
 /**
- * Finds the function of the app an inline route middleware, such as
- * `.use(async (ctx, next) => {})`, was created from, by its runtime source: the app function with
- * the same tokens once its types are erased.
+ * The body of the app function whose head, before its body, holds the location: V8 locates a
+ * function at its parameters, and an enclosing function never has them in its head.
  */
-export function inlineMiddleware(program: ts.Program) {
+function declaredAt(program: ts.Program, { file, line, column }: FunctionLocation) {
+  const sourceFile = program.getSourceFile(file)
+
+  if (!sourceFile || !isAppSource(sourceFile)) return undefined
+
+  const position = sourceFile.getPositionOfLineAndCharacter(line, column)
+  let found: ts.ConciseBody | undefined
+
+  const visit = (node: ts.Node) => {
+    if (position < node.getStart(sourceFile) || position >= node.end) return
+
+    if (
+      (isFunction(node) || ts.isMethodDeclaration(node)) &&
+      node.body &&
+      position < node.body.getStart(sourceFile)
+    )
+      found = node.body
+
+    ts.forEachChild(node, visit)
+  }
+
+  visit(sourceFile)
+
+  return found
+}
+
+export function inlineMiddleware(program: ts.Program, middleware: InlineMiddleware[]) {
   let index: Map<string, FunctionNode[]> | undefined
   const erased = new Map<FunctionNode, string | undefined>()
 
@@ -168,7 +193,7 @@ export function inlineMiddleware(program: ts.Program) {
     return erased.get(fn)
   }
 
-  return (source: string): InlineMatch => {
+  const bySource = (source: string): InlineMatch => {
     const runtime = parseFunction(`(${source})`)
 
     if (!runtime) return { kind: 'missing' }
@@ -182,5 +207,29 @@ export function inlineMiddleware(program: ts.Program) {
     if (candidates.length > 1) return { kind: 'ambiguous', candidates }
 
     return only?.body ? { kind: 'found', body: only.body } : { kind: 'missing' }
+  }
+
+  let locations: Map<Function, FunctionLocation> | undefined
+
+  const locationOf = (fn: Function) => {
+    locations ??= locateFunctions(
+      middleware.flatMap(({ source, fn }) => (bySource(source).kind === 'missing' ? [fn] : [])),
+    )
+
+    return locations.get(fn)
+  }
+
+  return ({ source, fn }: InlineMiddleware): InlineMatch => {
+    const match = bySource(source)
+
+    if (match.kind !== 'missing') return match
+
+    const location = locationOf(fn)
+
+    if (!location) return match
+
+    const body = declaredAt(program, location)
+
+    return body ? { kind: 'found', body } : match
   }
 }
