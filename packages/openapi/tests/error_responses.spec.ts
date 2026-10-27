@@ -140,6 +140,20 @@ test.group('openapi:generate on the playground app: exceptions, middleware and t
     })
   })
 
+  test('lists every literal code the app sends in a shared ErrorCode schema', ({ assert }) => {
+    const { enum: codes = [] } = document.components.schemas.ErrorCode!
+
+    assert.deepEqual(
+      codes,
+      [...codes].sort((a, b) => String(a).localeCompare(String(b))),
+    )
+    assert.includeMembers(codes, [
+      'E_AUTHORIZATION_FAILURE',
+      'E_EMAIL_NOT_VERIFIED',
+      'E_EMAIL_TAKEN',
+    ])
+  })
+
   test('describes a thrown status with @response without adding a body', ({ assert }) => {
     assert.deepEqual(probe('thrown').responses['409'], {
       description: 'The email is taken',

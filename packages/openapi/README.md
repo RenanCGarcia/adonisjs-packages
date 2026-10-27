@@ -301,6 +301,8 @@ export default class EmailTakenException extends Exception {
 
 When several exceptions share a status code, or an exception uses `422` on a route that validates its input, the body schema is a `oneOf` of each distinct body and `ValidationError`.
 
+The document also gets an `ErrorCode` schema, an enum of every literal `code` (`as const`, or a literal type) an error body carries, so a client can list the codes. A name `ErrorCode` your own types already use is left alone.
+
 A class from a package, such as `E_ROW_NOT_FOUND` from `@adonisjs/lucid`, is thrown inside the package, which the generator does not read. Name the call that throws it in `errors.throwers`, and its status is read from the package's JavaScript.
 
 ## Error bodies

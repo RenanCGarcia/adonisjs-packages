@@ -2447,6 +2447,18 @@
           "code",
           "message"
         ]
+      },
+      "ErrorCode": {
+        "type": "string",
+        "enum": [
+          "E_AUTHORIZATION_FAILURE",
+          "E_DISPOSABLE_EMAIL",
+          "E_EMAIL_NOT_VERIFIED",
+          "E_EMAIL_TAKEN",
+          "E_INVALID_TENANT_HEADER",
+          "E_TOO_MANY_REQUESTS",
+          "E_WRONG_SECRET"
+        ]
       }
     },
     "responses": {
