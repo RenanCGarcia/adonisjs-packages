@@ -1,5 +1,11 @@
 # @enzopita/adonisjs-openapi
 
+## 0.4.2
+
+### Patch Changes
+
+- [#25](https://github.com/enzopita/adonisjs-packages/pull/25) [`7783769`](https://github.com/enzopita/adonisjs-packages/commit/778376986b8af029da885ca9d1abb68217a0da84) Thanks [@enzopita](https://github.com/enzopita)! - A numeric `@throws {status}` adds the exception handler's body only when the action sends no body of its own for that status. In 0.4.1 it also added that body next to an exception the action throws, such as a `409` with its own body, which documented bodies the route never sends.
+
 ## 0.4.1
 
 ### Patch Changes
