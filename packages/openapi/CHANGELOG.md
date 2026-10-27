@@ -1,5 +1,11 @@
 # @enzopita/adonisjs-openapi
 
+## 0.4.1
+
+### Patch Changes
+
+- [#23](https://github.com/enzopita/adonisjs-packages/pull/23) [`7845c56`](https://github.com/enzopita/adonisjs-packages/commit/7845c56a51c5746196b3c6d7861f1bada5334769) Thanks [@enzopita](https://github.com/enzopita)! - A numeric `@throws {403}` on a status that a route middleware also answers now adds the body the exception handler renders for that status to the `oneOf`, instead of keeping only the middleware bodies.
+
 ## 0.4.0
 
 ### Minor Changes
