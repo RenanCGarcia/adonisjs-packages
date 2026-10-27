@@ -1,12 +1,12 @@
 import ts from 'typescript'
-import { exceptionType } from './exception_class.ts'
-import { declaredStatus } from './exception_status.ts'
-import type { ExceptionResponses } from './exception_responses.ts'
-import type { Thrown } from './operation_docs.ts'
+import { exceptionType } from '../exceptions/exception_class.ts'
+import { declaredStatus } from '../exceptions/exception_status.ts'
+import type { ExceptionResponses } from '../exceptions/exception_responses.ts'
+import type { Thrown } from '../exceptions/own_response.ts'
+import { property } from '../symbols.ts'
 import { callMatches } from './throwers.ts'
-import type { Diagnostic, ErrorsConfig, ResponseSource, SourceLocation } from './types.ts'
-
-type Kind = 'throwers' | 'middleware'
+import { entryStatusUnreadable, unmatchedKey, type ErrorsKind } from '../../diagnostics/errors.ts'
+import type { Diagnostic, ErrorsConfig, ResponseSource, SourceLocation } from '../../types.ts'
 
 /**
  * An exception an `errors.throwers` or `errors.middleware` entry names, with its class as the
@@ -26,13 +26,10 @@ export interface ConfiguredException {
 export class ConfiguredErrors {
   #checker: ts.TypeChecker
   #errors: ErrorsConfig
-  /**
-   * The type of `config/openapi.ts`, absent when the app has none.
-   */
   #config?: ts.Type
   #exceptions: ExceptionResponses
   #location: (node: ts.Node) => SourceLocation
-  #entries = new Map<Kind, ConfiguredException[]>()
+  #entries = new Map<ErrorsKind, ConfiguredException[]>()
   #matched = new Set<string>()
   #problems: Diagnostic[] = []
 
@@ -50,18 +47,12 @@ export class ConfiguredErrors {
     this.#location = location
   }
 
-  #property(type: ts.Type | undefined, name: string) {
-    const symbol = type && this.#checker.getPropertyOfType(type, name)
-
-    return symbol && this.#checker.getTypeOfSymbol(symbol)
-  }
-
-  #entriesOf(kind: Kind) {
+  #entriesOf(kind: ErrorsKind) {
     const cached = this.#entries.get(kind)
 
     if (cached) return cached
 
-    const types = this.#property(this.#property(this.#config, 'errors'), kind)
+    const types = property(this.#checker, property(this.#checker, this.#config, 'errors'), kind)
 
     const entries = Object.entries(this.#errors[kind] ?? {}).map(
       ([key, value]): ConfiguredException => {
@@ -87,13 +78,7 @@ export class ConfiguredErrors {
         }
 
         if (!entry.responses.length)
-          this.#problems.push({
-            code: 'OA-E001',
-            severity: 'warning',
-            message: `errors.${kind}['${key}']: the status of ${entry.name} cannot be read, the entry is ignored`,
-            fix: 'name an exception class with a numeric `status` field or `static status`',
-            ...(entry.location && { location: entry.location }),
-          })
+          this.#problems.push(entryStatusUnreadable(kind, key, entry.name, entry.location))
 
         return entry
       },
@@ -105,34 +90,19 @@ export class ConfiguredErrors {
   }
 
   /**
-   * The `OA-E001` the entries raised, and an `OA-E003` for each key no route matched, such as a
-   * misspelled `bouncer.authorise`. Read once every route is documented.
+   * Read once every route is documented, so a key no route matched, such as a misspelled
+   * `bouncer.authorise`, is known by then.
    */
   get diagnostics(): Diagnostic[] {
     const unmatched = (['throwers', 'middleware'] as const).flatMap(kind =>
       this.#entriesOf(kind)
         .filter(({ key }) => !this.#matched.has(`${kind}:${key}`))
-        .map(({ key, location }): Diagnostic => ({
-          code: 'OA-E003',
-          severity: 'warning',
-          message:
-            kind === 'throwers'
-              ? `errors.throwers['${key}'] matches no call of the documented routes`
-              : `errors.middleware['${key}'] matches no middleware of the documented routes`,
-          fix:
-            kind === 'throwers'
-              ? 'name the method, such as `findOrFail`, or the names the call goes through, such as `bouncer.authorize`'
-              : 'name the middleware as `node ace list:routes` shows it, such as `auth` or `globalThrottle`, or its specifier in start/kernel.ts',
-          ...(location && { location }),
-        })),
+        .map(({ key, location }) => unmatchedKey(kind, key, location)),
     )
 
     return [...this.#problems, ...unmatched]
   }
 
-  /**
-   * What the calls an `errors.throwers` key names throw.
-   */
   throwerResponses(invoked: ts.CallExpression[]) {
     return this.#entriesOf('throwers').flatMap(entry =>
       invoked

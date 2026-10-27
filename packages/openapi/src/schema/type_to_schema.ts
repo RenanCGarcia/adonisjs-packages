@@ -1,5 +1,5 @@
 import ts from 'typescript'
-import type { JsonSchema } from './types.ts'
+import type { JsonSchema } from '../types.ts'
 
 const OMITTED = ts.TypeFlags.Undefined | ts.TypeFlags.Void
 

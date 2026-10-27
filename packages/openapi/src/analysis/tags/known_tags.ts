@@ -1,7 +1,9 @@
 import type ts from 'typescript'
-import type { Problem } from './operation_docs.ts'
+import { tagNotRead } from '../../diagnostics/tags.ts'
+import type { Diagnostic } from '../../types.ts'
+import type { TagContext } from './tag_context.ts'
 
-const READ_TAGS = new Set(['throws', 'response', 'requestBody', 'tags', 'deprecated', 'remarks'])
+const READ_TAGS = ['throws', 'response', 'requestBody', 'tags', 'deprecated', 'remarks']
 
 // Standard JSDoc and TSDoc tags an action can carry for its readers, which the document has no place for.
 const IGNORED_TAGS = new Set([
@@ -33,23 +35,17 @@ const MOVED_TAGS = new Map([
   ['exception', 'use @throws {Class}'],
 ])
 
+const READ_FIX = `use ${READ_TAGS.slice(0, -1)
+  .map(name => `@${name}`)
+  .join(', ')} or @${READ_TAGS.at(-1)}`
+
 /**
  * A tag the generator does not read, such as a misspelled `@reponse`.
  */
-export function unknownTag(tag: ts.JSDocTag): Problem[] {
+export function unknownTag(tag: ts.JSDocTag, locate: TagContext['locate']): Diagnostic[] {
   const name = tag.tagName.text
 
-  if (READ_TAGS.has(name) || IGNORED_TAGS.has(name)) return []
+  if (READ_TAGS.includes(name) || IGNORED_TAGS.has(name)) return []
 
-  return [
-    {
-      code: 'OA-T008',
-      severity: 'warning',
-      message: `@${name} is not a tag the generator reads`,
-      fix:
-        MOVED_TAGS.get(name) ??
-        'use @throws, @response, @requestBody, @tags, @deprecated or @remarks',
-      node: tag,
-    },
-  ]
+  return [tagNotRead(locate(tag), name, MOVED_TAGS.get(name) ?? READ_FIX)]
 }

@@ -19,7 +19,7 @@ export abstract class OpenApiCommand extends BaseCommand {
     const config = this.app.config.get<OpenApiConfig | undefined>('openapi') ?? defineConfig()
 
     // Loaded on run: it pulls in the TypeScript compiler, which every other ace command would pay for.
-    const { generateDocument } = await import('../src/generate.ts')
+    const { generateDocument } = await import('../src/document/generate.ts')
     const generated = await generateDocument(this.app, router, config)
 
     for (const diagnostic of generated.diagnostics) this.#report(diagnostic)

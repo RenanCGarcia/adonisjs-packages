@@ -41,6 +41,11 @@ export default defineConfig({
 
   overrides: [
     {
+      // A file past this size holds more than one responsibility. Blank lines and comments do not count.
+      files: ['packages/*/src/**', 'packages/*/commands/**', 'packages/*/tests/**'],
+      rules: { 'max-lines': ['error', { max: 300, skipBlankLines: true, skipComments: true }] },
+    },
+    {
       // The playground is the scaffolded AdonisJS API kit kept close to upstream, so it stays a realistic fixture.
       // The fixture apps overlay files on a copy of it.
       files: ['playground/**', 'packages/openapi/tests/fixtures/*_app/**'],

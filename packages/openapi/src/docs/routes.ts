@@ -35,7 +35,7 @@ function cspNonce(response: HttpContext['response']) {
 
 async function generateLive() {
   // Loaded on demand: it pulls in the assembler, a dev dependency that a production install leaves out.
-  const { generateDocument } = await import('../generate.ts')
+  const { generateDocument } = await import('../document/generate.ts')
   const { document } = await generateDocument(app, router, openapiConfig())
 
   return document

@@ -1,5 +1,7 @@
 import ts from 'typescript'
-import { aliased, answersOf, methodBodies, responseCalls, type Answer } from './operation_docs.ts'
+import { methodBodies, responseCalls } from '../response_calls.ts'
+import { aliased } from '../symbols.ts'
+import { answersOf, type Answer } from '../answers.ts'
 
 /**
  * An `if (error instanceof X)` branch of the exception handler, and what it answers with.

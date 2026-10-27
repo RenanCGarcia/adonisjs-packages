@@ -1,5 +1,6 @@
 import ts from 'typescript'
-import { aliased, bodyOf } from './operation_docs.ts'
+import { bodyOf } from '../response_calls.ts'
+import { aliased } from '../symbols.ts'
 
 /**
  * A class the app throws: its name in the code, and the symbol the code names it with, such as a
@@ -35,12 +36,14 @@ export function exceptionType(
   return instance && { name, symbol: target, constructor, instance }
 }
 
+export type OwnHandler = 'none' | 'read' | 'unread'
+
 /**
  * Whether the exception answers through a `handle()` of its own, which runs before the
  * `renderErrorAsJSON()` of the exception handler: `unread` when a package declares it, so its body
  * cannot be read.
  */
-export function ownHandler(checker: ts.TypeChecker, instance: ts.Type) {
+export function ownHandler(checker: ts.TypeChecker, instance: ts.Type): OwnHandler {
   const declaration = checker.getPropertyOfType(instance, 'handle')?.valueDeclaration
 
   if (!declaration) return 'none'

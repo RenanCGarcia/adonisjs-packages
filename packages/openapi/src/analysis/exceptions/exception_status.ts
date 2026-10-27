@@ -2,7 +2,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import ts from 'typescript'
 import type { ExceptionType } from './exception_class.ts'
-import { aliased, statusOf } from './operation_docs.ts'
+import { aliased, statusCode, statusOf } from '../symbols.ts'
 
 /**
  * Finds what an identifier in a class or a constant refers to: through the checker in the app's
@@ -13,9 +13,7 @@ type Resolve = (name: ts.Identifier) => ts.Node | undefined
 type Read = (node: ts.Node | undefined) => string | undefined
 
 const numeric: Read = node => {
-  const value = node && ts.isNumericLiteral(node) ? Number(node.text) : Number.NaN
-
-  return value >= 100 && value <= 599 ? String(value) : undefined
+  return node && ts.isNumericLiteral(node) ? statusCode(Number(node.text)) : undefined
 }
 
 function named(member: ts.ClassElement | ts.ObjectLiteralElementLike, name: string) {

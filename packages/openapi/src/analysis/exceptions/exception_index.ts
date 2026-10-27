@@ -1,13 +1,20 @@
 import ts from 'typescript'
 import { relative, sep } from 'node:path'
 import { exceptionType, lineage, type ExceptionType } from './exception_class.ts'
-import type { FindException } from './throws_tag.ts'
+
+/**
+ * The exception classes of the app with this name, with the file of each, and the names of all of them.
+ */
+export type FindException = (name: string) => {
+  found: { exception: ExceptionType; file: string }[]
+  names: string[]
+}
 
 const EXCEPTIONS_FOLDER = /^app\/(?:.+\/)?exceptions\//
 
 /**
  * Finds the classes extending `Exception` in the app's `app/**\/exceptions/` folders by name, so
- * `@throws {EmailTakenException}` needs no import. Read on the first lookup.
+ * `@throws {EmailTakenException}` needs no import.
  */
 export function exceptionIndex(
   program: ts.Program,

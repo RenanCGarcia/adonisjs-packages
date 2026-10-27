@@ -1,4 +1,4 @@
-import type { generateDocument as generate } from './src/generate.ts'
+import type { generateDocument as generate } from './src/document/generate.ts'
 
 export { configure } from './configure.ts'
 
@@ -11,7 +11,7 @@ export { stubsRoot } from './stubs/main.ts'
  * generator pulls in the TypeScript compiler, and the assembler that a production install leaves out.
  */
 export async function generateDocument(...args: Parameters<typeof generate>) {
-  const { generateDocument: run } = await import('./src/generate.ts')
+  const { generateDocument: run } = await import('./src/document/generate.ts')
 
   return run(...args)
 }
