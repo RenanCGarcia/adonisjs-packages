@@ -1,4 +1,5 @@
 import { readFile } from 'node:fs/promises'
+import { resolve } from 'node:path'
 import { basename } from 'node:path/posix'
 import app from '@adonisjs/core/services/app'
 import router from '@adonisjs/core/services/router'
@@ -41,8 +42,8 @@ async function generateLive() {
   return document
 }
 
-async function readGenerated(file: string): Promise<OpenApiDocument> {
-  const path = app.makePath(file)
+async function readGenerated(): Promise<OpenApiDocument> {
+  const path = resolve(app.makePath(), openapiConfig().output)
 
   try {
     return JSON.parse(await readFile(path, 'utf8'))
@@ -60,13 +61,11 @@ function documentSource(options: DocsOptions): () => Promise<OpenApiDocument> {
 
   if (source === 'live') return generateLive
 
-  const file = () => options.file ?? openapiConfig().output
-
-  if (!app.inProduction) return () => readGenerated(file())
+  if (!app.inProduction) return readGenerated
 
   let cached: OpenApiDocument | undefined
 
-  return async () => (cached ??= await readGenerated(file()))
+  return async () => (cached ??= await readGenerated())
 }
 
 /**
@@ -81,7 +80,7 @@ export function openapiRoutes(options: DocsOptions = {}) {
       router
         .get('/', ({ request, response }) => {
           const page = renderPage(options, {
-            title: options.title ?? openapiConfig().info.title,
+            title: options.title ?? openapiConfig().document.info.title,
             documentUrl: documentUrl(request.url()),
             nonce: cspNonce(response),
           })

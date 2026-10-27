@@ -5,11 +5,15 @@ import { defineConfig } from '@enzopita/adonisjs-openapi'
 
 export default defineConfig({
   output: 'openapi.json',
-  info: { title: 'API', version: '1.0.0' },
-  securitySchemes: {
-    accessToken: { type: 'http', scheme: 'bearer' },
+  document: {
+    info: { title: 'API', version: '1.0.0' },
   },
-  middlewareSecurity: {
-    auth: 'accessToken',
+  security: {
+    schemes: {
+      accessToken: { type: 'http', scheme: 'bearer' },
+    },
+    middleware: {
+      auth: 'accessToken',
+    },
   },
 })

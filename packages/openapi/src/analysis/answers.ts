@@ -16,6 +16,10 @@ export interface Answer {
   headers?: string[]
   node: ts.Node
   exception?: string
+  /**
+   * The class of the exception thrown, which describes the response in its doc comment.
+   */
+  owner?: ts.Symbol
 }
 
 function chainedStatus(checker: ts.TypeChecker, call: ts.CallExpression) {

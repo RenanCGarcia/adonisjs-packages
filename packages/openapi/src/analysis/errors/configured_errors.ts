@@ -16,6 +16,7 @@ export interface ConfiguredException {
   key: string
   name: string
   responses: Thrown[]
+  owner?: ts.Symbol
   location?: SourceLocation
 }
 
@@ -74,6 +75,7 @@ export class ConfiguredErrors {
           key,
           name: exception?.name ?? (value.name || key),
           responses: exception ? this.#exceptions.responses(exception, status) : [],
+          owner: exception?.symbol,
           ...(declaration && { location: this.#location(declaration) }),
         }
 
@@ -117,7 +119,7 @@ export class ConfiguredErrors {
             location: this.#location(call),
           }
 
-          return entry.responses.map(thrown => ({ ...thrown, source }))
+          return entry.responses.map(thrown => ({ ...thrown, source, owner: entry.owner }))
         }),
     )
   }
@@ -138,6 +140,7 @@ export class ConfiguredErrors {
             body,
             middleware: entry.key,
             location: entry.location,
+            owner: entry.owner,
           })),
         )
       })

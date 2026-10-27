@@ -7,6 +7,9 @@ import DisposableEmailException from '#exceptions/disposable_email_exception'
 
 const DISPOSABLE_DOMAINS = new Set(['mailinator.com', 'yopmail.com'])
 
+/**
+ * @tags Auth
+ */
 export default class NewAccountController {
   /**
    * @throws {DisposableEmailException}

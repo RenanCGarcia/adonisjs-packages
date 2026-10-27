@@ -32,7 +32,7 @@ export function fromResponseTags(context: ResponseContext, tags: ResponseTag[]) 
       { kind: 'tag', tag: '@response', location: app.locate(tag) },
       code,
       body ? [body] : [],
-      reason,
+      { reason },
     )
 
   for (const { code, tag } of underived)

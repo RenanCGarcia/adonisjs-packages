@@ -1,13 +1,8 @@
 import type ts from 'typescript'
 import type { OperationMeta } from '../analysis/tags/operation_docs.ts'
 import type { AppTypes } from '../program/app_types.ts'
-import type {
-  HttpMethod,
-  JsonSchema,
-  OpenApiOperation,
-  OpenApiResponse,
-  RouteOperation,
-} from '../types.ts'
+import type { HttpMethod, JsonSchema, OpenApiOperation } from '../types.ts'
+import type { RouteOperation } from '../routes/route_operation.ts'
 import { parametersFor } from './parameters.ts'
 
 export interface OperationParts {
@@ -15,7 +10,7 @@ export interface OperationParts {
   requestBody?: ts.Type
   input?: JsonSchema
   fields?: JsonSchema
-  responses: Record<string, OpenApiResponse>
+  responses: OpenApiOperation['responses']
   security: Record<string, string[]>[]
 }
 
@@ -33,13 +28,15 @@ export function operationFor(
   const validated = readsQueryOnly ? undefined : fields
   const body = requestBody ? app.schemas.convert(requestBody) : validated
 
-  const query = readsQueryOnly ? fields : input?.properties?.query
-  const parameters = parametersFor(route, query, input?.properties?.params)
+  const parameters = parametersFor(
+    route,
+    readsQueryOnly ? fields : undefined,
+    input?.properties?.params,
+  )
 
   const operation: OpenApiOperation = {
     operationId: route.methods.length > 1 ? `${route.operationId}.${method}` : route.operationId,
     ...meta,
-    tags: meta.tags ?? [route.name.split('.')[0] ?? route.name],
     responses,
   }
 

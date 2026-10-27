@@ -8,7 +8,6 @@ export async function configure(command: Configure) {
   await codemods.updateRcFile(rcFile => {
     rcFile.addCommand('@enzopita/adonisjs-openapi/commands')
     rcFile.addAssemblerHook('buildStarting', '@enzopita/adonisjs-openapi/build_hook')
-    rcFile.addMetaFile('openapi.json')
   })
 
   command.ui

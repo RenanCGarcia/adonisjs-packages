@@ -1,6 +1,6 @@
 import { test } from '@japa/runner'
 import type { OpenApiDocument } from '../src/types.ts'
-import { generatePlayground, json, object } from './support/playground.ts'
+import { generatePlayground, inline, json, object } from './support/playground.ts'
 
 test.group('openapi:generate on the playground app: the document', group => {
   let document: OpenApiDocument
@@ -44,6 +44,7 @@ test.group('openapi:generate on the playground app: the document', group => {
       '/api/v1/probe/gated',
       '/api/v1/probe/reasoned',
       '/api/v1/probe/authorized',
+      '/api/v1/probe/screened',
       '/api/v1/probe/viewed',
       '/api/v1/probe/hidden',
       '/api/v1/probe/users/{id}',
@@ -58,6 +59,9 @@ test.group('openapi:generate on the playground app: the document', group => {
       '/api/v1/probe/items',
       '/api/v1/probe/items/{id}',
       '/api/v1/probe/echo',
+      '/api/v1/probe/paged',
+      '/api/v1/probe/nullable',
+      '/api/v1/probe/secret',
     ])
     assert.include(logs, 'OA-R001 probe.closure: closure handlers have no types to read')
     assert.notInclude(logs, 'openapi.ui')
@@ -69,7 +73,12 @@ test.group('openapi:generate on the playground app: the document', group => {
 
     assert.deepEqual(body.properties!.email, { type: 'string', format: 'email', maxLength: 254 })
     assert.deepEqual(body.properties!.password, { type: 'string', minLength: 8, maxLength: 32 })
-    assert.sameMembers(body.required ?? [], ['email', 'password', 'passwordConfirmation'])
+    assert.sameMembers(body.required ?? [], [
+      'fullName',
+      'email',
+      'password',
+      'passwordConfirmation',
+    ])
   })
 
   test('sends files as multipart binary', ({ assert }) => {
@@ -98,10 +107,8 @@ test.group('openapi:generate on the playground app: the document', group => {
   })
 
   test('derives the response from the serialized transformer', ({ assert }) => {
-    const schema =
-      document.paths['/api/v1/account/profile']!.get!.responses['200']!.content![
-        'application/json'
-      ]!.schema
+    const schema = inline(document.paths['/api/v1/account/profile']!.get!.responses['200'])
+      .content!['application/json']!.schema
 
     assert.deepEqual(schema.properties!.data, { $ref: '#/components/schemas/User' })
     assert.containsSubset(document.components.schemas.User!.properties, {
@@ -144,7 +151,7 @@ test.group('openapi:generate on the playground app: the document', group => {
   }) => {
     assert.deepEqual(document.paths['/api/v1/users/{id}']!.get!.tags, ['Users'])
     assert.deepEqual(document.paths['/api/v1/users']!.get!.tags, ['Directory'])
-    assert.deepEqual(document.paths['/api/v1/account/profile']!.get!.tags, ['profile'])
+    assert.deepEqual(document.paths['/api/v1/account/profile']!.get!.tags, ['Account'])
   })
 
   test('takes the request body of an unvalidated handler from @requestBody', ({ assert }) => {
@@ -169,7 +176,7 @@ test.group('openapi:generate on the playground app: the document', group => {
 
   test('names transformer data as components and references them', ({ assert }) => {
     const json = (path: string) =>
-      document.paths[path]!.get!.responses['200']!.content!['application/json']!.schema
+      inline(document.paths[path]!.get!.responses['200']).content!['application/json']!.schema
 
     assert.deepEqual(json('/api/v1/users/{id}').properties!.data, {
       $ref: '#/components/schemas/User',
@@ -183,8 +190,9 @@ test.group('openapi:generate on the playground app: the document', group => {
   test('names the validation error as a shared component', ({ assert }) => {
     assert.property(document.components.schemas, 'ValidationError')
     assert.deepEqual(
-      document.paths['/api/v1/auth/login']!.post!.responses['422']!.content!['application/json']!
-        .schema,
+      inline(document.paths['/api/v1/auth/login']!.post!.responses['422']).content![
+        'application/json'
+      ]!.schema,
       { $ref: '#/components/schemas/ValidationError' },
     )
   })
@@ -230,6 +238,15 @@ test.group('openapi:generate on the playground app: the document', group => {
   })
 
   test('writes the tags from the config', ({ assert }) => {
-    assert.deepEqual(document.tags, [{ name: 'Users', description: 'Public user profiles' }])
+    assert.deepEqual(
+      document.tags?.map(({ name }) => name),
+      ['Auth', 'Account', 'Users', 'Directory', 'Webhooks', 'Probe'],
+    )
+  })
+
+  test('tags an operation with the @tags of its controller class, not its route name', ({
+    assert,
+  }) => {
+    assert.deepEqual(document.paths['/api/v1/account/logout']!.post!.tags, ['Auth'])
   })
 })

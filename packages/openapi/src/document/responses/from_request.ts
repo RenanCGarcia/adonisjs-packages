@@ -13,12 +13,15 @@ export function fromValidator(context: ResponseContext) {
 
 export function fromMiddleware(context: ResponseContext) {
   const { app, route, outcomes } = context
+  const { responses, diagnostics } = app.middlewareResponses(route)
 
-  for (const { code, body, middleware, location } of app.middlewareResponses(route))
+  context.diagnostics.push(...diagnostics)
+
+  for (const { code, body, middleware, location, owner } of responses)
     outcomes.add(
       code,
       { kind: 'middleware', middleware, ...(location && { location }) },
-      { bodies: body ? [jsonBody(context, body)] : [] },
+      { bodies: body ? [jsonBody(context, body)] : [], owner },
     )
 }
 

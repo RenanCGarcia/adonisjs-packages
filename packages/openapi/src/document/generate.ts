@@ -5,20 +5,13 @@ import { operationDocs, type OperationDocs } from '../analysis/tags/operation_do
 import { lucidModel, noJsonSchema } from '../diagnostics/route.ts'
 import { readApp } from '../program/app_types.ts'
 import { collectRoutes } from '../routes/collect_routes.ts'
-import type { Diagnostic, OpenApiConfig, OpenApiDocument, ResponseSource } from '../types.ts'
+import type { Diagnostic, GeneratedDocument, OpenApiConfig, OpenApiDocument } from '../types.ts'
 import { operationFor } from './operation.ts'
+import { operationRules } from './operation_rules.ts'
+import { ResponseComponents } from './response_components.ts'
 import { responsesFor } from './responses/responses.ts'
 import { securityFor } from './security.ts'
 import { bodyFields, mergeSchemas, validatorSchemas } from './validator_schemas.ts'
-
-export interface GeneratedDocument {
-  document: OpenApiDocument
-  diagnostics: Diagnostic[]
-  /**
-   * Route name to status code to what documented that response, in the order it was read.
-   */
-  provenance: Record<string, Record<string, ResponseSource[]>>
-}
 
 const NO_DOCS: OperationDocs = { meta: {}, throws: [], responses: [], problems: [] }
 
@@ -35,10 +28,13 @@ export async function generateDocument(
 
   const paths: OpenApiDocument['paths'] = {}
   const provenance: GeneratedDocument['provenance'] = {}
+  const components = new ResponseComponents(appRoot)
 
-  for (const route of routes) {
-    const { request, response } = types.routeTypes(route.name)
-    const input = request && mergeSchemas(vine.get(route.name), types.schemas.convert(request))
+  // A route with an optional param has a path without it too, which shares everything else.
+  for (const [name, variants] of Map.groupBy(routes, route => route.name)) {
+    const route = variants[0]!
+    const { request, response } = types.routeTypes(name)
+    const input = request && mergeSchemas(vine.get(name), types.schemas.convert(request))
     const fields = input && bodyFields(input)
     const controller = types.handler(route)
 
@@ -47,35 +43,38 @@ export async function generateDocument(
       : NO_DOCS
 
     diagnostics.push(
-      ...docs.problems.map((problem): Diagnostic => ({ ...problem, route: route.name })),
+      ...docs.problems.map((problem): Diagnostic => ({ ...problem, route: name })),
+      ...operationRules(
+        name,
+        docs.meta,
+        config,
+        controller && types.locate(controller.method.name),
+      ),
     )
 
-    const { secured, security } = securityFor(route, config.middlewareSecurity)
+    const { secured, security } = securityFor(route, config.security.middleware)
 
-    const { responses, sources } = responsesFor(
-      route,
-      types,
-      controller,
-      response,
-      docs,
-      secured,
+    const { responses, sources } = responsesFor(route, types, controller, response, docs, secured, {
       diagnostics,
-    )
+      components,
+    })
 
-    provenance[route.name] = sources
+    provenance[name] = sources
 
-    const methods = paths[route.path] ?? {}
-    paths[route.path] = methods
+    for (const variant of variants) {
+      const methods = paths[variant.path] ?? {}
+      paths[variant.path] = methods
 
-    for (const method of route.methods)
-      methods[method] = operationFor(route, method, types, {
-        meta: docs.meta,
-        requestBody: docs.requestBody,
-        input,
-        fields,
-        responses,
-        security,
-      })
+      for (const method of variant.methods)
+        methods[method] = operationFor(variant, method, types, {
+          meta: docs.meta,
+          requestBody: docs.requestBody,
+          input,
+          fields,
+          responses,
+          security,
+        })
+    }
   }
 
   diagnostics.push(...types.exceptions.diagnostics, ...types.errors.diagnostics)
@@ -84,16 +83,26 @@ export async function generateDocument(
 
   for (const model of types.schemas.models) diagnostics.push(lucidModel(model))
 
+  const responses = components.responses()
+
   const document: OpenApiDocument = {
     openapi: '3.1.0',
-    info: config.info,
+    info: config.document.info,
     paths,
-    components: { schemas: types.schemas.components, securitySchemes: config.securitySchemes },
+    components: {
+      schemas: types.schemas.components,
+      ...(Object.keys(responses).length > 0 && { responses }),
+      securitySchemes: config.security.schemes,
+    },
   }
 
-  if (config.servers.length) document.servers = config.servers
+  if (config.document.servers.length) document.servers = config.document.servers
 
-  if (config.tags.length) document.tags = config.tags
+  if (config.document.tags.length) document.tags = config.document.tags
 
-  return { document, diagnostics, provenance }
+  return {
+    document,
+    diagnostics,
+    provenance,
+  }
 }

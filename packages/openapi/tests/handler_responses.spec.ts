@@ -1,6 +1,6 @@
 import { test } from '@japa/runner'
 import type { OpenApiDocument } from '../src/types.ts'
-import { generatePlayground, json, object } from './support/playground.ts'
+import { generatePlayground, inline, json, object } from './support/playground.ts'
 
 test.group('openapi:generate on the playground app: what a handler returns and sends', group => {
   let document: OpenApiDocument
@@ -18,7 +18,7 @@ test.group('openapi:generate on the playground app: what a handler returns and s
 
     assert.notProperty(signup, '200')
     assert.deepEqual(
-      signup['201']!.content!['application/json']!.schema.properties!.data!.properties!.user,
+      inline(signup['201']).content!['application/json']!.schema.properties!.data!.properties!.user,
       { $ref: '#/components/schemas/User' },
     )
     assert.deepEqual(document.paths['/api/v1/account/avatar']!.delete!.responses['204'], {
@@ -48,7 +48,7 @@ test.group('openapi:generate on the playground app: what a handler returns and s
 
   test('answers 204 for null and marks a body that can be absent', ({ assert }) => {
     assert.deepEqual(probe('empty').responses, { '204': { description: 'No Content' } })
-    assert.equal(probe('maybe').responses['200']!.description, 'OK, or no body')
+    assert.equal(inline(probe('maybe').responses['200']).description, 'OK, or no body')
     assert.deepEqual(json(probe('maybe').responses['200']), object({ found: { type: 'boolean' } }))
   })
 
@@ -59,10 +59,10 @@ test.group('openapi:generate on the playground app: what a handler returns and s
   })
 
   test('sends a string as text/plain unless the handler sets the content-type', ({ assert }) => {
-    assert.deepEqual(probe('text').responses['200']!.content, {
+    assert.deepEqual(inline(probe('text').responses['200']).content, {
       'text/plain': { schema: { type: 'string' } },
     })
-    assert.deepEqual(probe('csv').responses['200']!.content, {
+    assert.deepEqual(inline(probe('csv').responses['200']).content, {
       'text/csv': { schema: { type: 'string' } },
     })
   })
@@ -102,14 +102,14 @@ test.group('openapi:generate on the playground app: what a handler returns and s
   test('documents files and streams as binary', ({ assert }) => {
     const binary = { 'application/octet-stream': { schema: { type: 'string', format: 'binary' } } }
 
-    assert.deepEqual(probe('download').responses['200']!.content, binary)
-    assert.deepEqual(probe('report').responses['200']!.content, {
+    assert.deepEqual(inline(probe('download').responses['200']).content, binary)
+    assert.deepEqual(inline(probe('report').responses['200']).content, {
       'application/pdf': { schema: { type: 'string', format: 'binary' } },
     })
-    assert.deepEqual(probe('export').responses['200']!.content, {
+    assert.deepEqual(inline(probe('export').responses['200']).content, {
       'text/csv': { schema: { type: 'string', format: 'binary' } },
     })
-    assert.deepEqual(probe('stream').responses['200']!.content, binary)
+    assert.deepEqual(inline(probe('stream').responses['200']).content, binary)
     assert.deepEqual(probe('attachment').responses['200'], {
       description: 'OK',
       headers: { 'Content-Disposition': { schema: { type: 'string' } } },

@@ -2,13 +2,8 @@ import { RoutesScanner } from '@adonisjs/assembler/routes_scanner'
 import type { RoutesListItem } from '@adonisjs/assembler/types'
 import type { Router } from '@adonisjs/core/http'
 import { closureRoute } from '../diagnostics/route.ts'
-import type {
-  Diagnostic,
-  HttpMethod,
-  OpenApiConfig,
-  RouteMatcher,
-  RouteOperation,
-} from '../types.ts'
+import type { Diagnostic, HttpMethod, OpenApiConfig, RouteMatcher } from '../types.ts'
+import type { RouteOperation } from './route_operation.ts'
 
 const METHODS = new Set<string>(['get', 'post', 'put', 'patch', 'delete', 'options'])
 
@@ -65,14 +60,24 @@ export async function collectRoutes(
   diagnostics: Diagnostic[],
 ): Promise<RouteOperation[]> {
   const live = router.toJSON()
-  const middlewareByRoute = new Map<string, string[]>()
+
+  const middlewareByRoute = new Map<
+    string,
+    Pick<RouteOperation, 'middleware' | 'inlineMiddleware'>
+  >()
 
   for (const route of Object.values(live).flat()) {
-    const names = [...route.middleware.all()].flatMap(entry =>
-      'name' in entry && entry.name ? [entry.name] : [],
-    )
+    const entries = [...route.middleware.all()]
 
-    middlewareByRoute.set(`${route.domain}:${route.pattern}:${route.methods.join(',')}`, names)
+    middlewareByRoute.set(`${route.domain}:${route.pattern}:${route.methods.join(',')}`, {
+      middleware: entries.flatMap(entry => ('name' in entry && entry.name ? [entry.name] : [])),
+      // `node ace list:routes` names a function without a name `closure`.
+      inlineMiddleware: entries.flatMap(entry =>
+        entry instanceof Function
+          ? [{ name: entry.name || 'closure', source: entry.toString() }]
+          : [],
+      ),
+    })
   }
 
   // A closure has no types to read, and the scanner keeps it when it is named.
@@ -104,8 +109,10 @@ export async function collectRoutes(
     const operation = {
       name: route.name,
       methods,
-      middleware:
-        middlewareByRoute.get(`${route.domain}:${route.pattern}:${route.methods.join(',')}`) ?? [],
+      ...(middlewareByRoute.get(`${route.domain}:${route.pattern}:${route.methods.join(',')}`) ?? {
+        middleware: [],
+        inlineMiddleware: [],
+      }),
       requestType: route.request?.type,
       responseType: route.response?.type,
       imports: [...(route.request?.imports ?? []), ...(route.response?.imports ?? [])],

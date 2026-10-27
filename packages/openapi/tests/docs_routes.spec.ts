@@ -2,11 +2,13 @@ import { execFile, spawn } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { readFile, writeFile } from 'node:fs/promises'
 import { once } from 'node:events'
+import { join } from 'node:path'
 import { createServer, type AddressInfo } from 'node:net'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { promisify } from 'node:util'
 import { test } from '@japa/runner'
 import type { OpenApiDocument } from '../src/types.ts'
+import { copyPlayground } from './support/playground.ts'
 
 const playground = new URL('../../../playground/', import.meta.url)
 const run = promisify(execFile)
@@ -27,11 +29,14 @@ async function freePort() {
 /**
  * Boots `bin/server.ts` the way `node ace serve` does, without the file watcher.
  */
-async function startPlayground(nodeEnv: 'development' | 'production') {
+async function startPlayground(
+  nodeEnv: 'development' | 'production',
+  cwd: URL | string = playground,
+) {
   const port = await freePort()
 
   const child = spawn(process.execPath, ['--import=@poppinss/ts-exec', 'bin/server.ts'], {
-    cwd: playground,
+    cwd,
     env: { ...process.env, NODE_ENV: nodeEnv, PORT: String(port), HOST: '127.0.0.1' },
     stdio: 'ignore',
   })
@@ -118,30 +123,29 @@ test.group('docs page behind basic auth, generated live in development', group =
 })
 
 test.group('docs page in production', group => {
-  const file = new URL('openapi.json', playground)
   let baseUrl: string
   let authorization: string
   let written: OpenApiDocument
 
   group.setup(async () => {
-    await run('node', ['ace', 'migration:run', '--force', '--no-schema-generate'], {
-      cwd: playground,
-    })
-    await run('node', ['ace', 'openapi:generate'], { cwd: playground })
-    const generated = await readFile(file, 'utf8')
+    const dir = await copyPlayground(async () => {})
+    const file = join(dir, 'openapi.json')
+
+    await run('node', ['ace', 'migration:run', '--force', '--no-schema-generate'], { cwd: dir })
+    await run('node', ['ace', 'openapi:generate'], { cwd: dir })
 
     // A version no live generation produces, so the response proves it came from the file.
-    written = { ...JSON.parse(generated), info: { title: 'API', version: randomUUID() } }
+    written = {
+      ...JSON.parse(await readFile(file, 'utf8')),
+      info: { title: 'API', version: randomUUID() },
+    }
     await writeFile(file, JSON.stringify(written))
 
-    const server = await startPlayground('production')
+    const server = await startPlayground('production', dir)
     baseUrl = server.baseUrl
     authorization = await signUp(baseUrl)
 
-    return async () => {
-      server.stop()
-      await writeFile(file, generated)
-    }
+    return () => server.stop()
   })
 
   test('serves the file openapi:generate wrote', async ({ assert }) => {

@@ -1,6 +1,6 @@
 import ts from 'typescript'
 import { join, relative } from 'node:path'
-import type { RouteOperation } from '../types.ts'
+import type { RouteOperation } from '../routes/route_operation.ts'
 
 /**
  * The names of the declarations the entry module exports, which `readEntry` finds the types of.

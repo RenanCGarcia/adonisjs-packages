@@ -5,6 +5,8 @@ import { defineConfig } from '@enzopita/adonisjs-openapi'
 import LedgerException from '#exceptions/ledger_exception'
 
 export default defineConfig({
+  document: { tags: [{ name: 'Broken' }] },
+  rules: { summaryMaxLength: 30, summaryTrailingPeriod: false },
   errors: {
     throwers: {
       'verifyCredentials': authErrors.E_INVALID_CREDENTIALS,

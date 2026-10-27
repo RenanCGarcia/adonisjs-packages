@@ -8,14 +8,19 @@ import { brokenApp, generateInCopy, json, object, unauthorizedApp } from './supp
 test.group('openapi:generate on an app whose handler renders E_UNAUTHORIZED_ACCESS', group => {
   let document: OpenApiDocument
   let dir: string
+  let output: string
 
   group.setup(async () => {
-    ;({ dir } = await generateInCopy(copy =>
+    ;({ dir, output } = await generateInCopy(copy =>
       cp(fileURLToPath(unauthorizedApp), copy, { recursive: true }),
     ))
-    document = JSON.parse(await readFile(join(dir, 'openapi.json'), 'utf8'))
+    document = JSON.parse(await readFile(join(dir, 'tmp/absolute/openapi.json'), 'utf8'))
 
     return () => rm(dir, { recursive: true })
+  })
+
+  test('writes an absolute output as given', ({ assert }) => {
+    assert.include(output, 'OpenAPI document written to tmp/absolute/openapi.json')
   })
 
   test('documents the 401 of a secured route with the body of the handler branch', ({ assert }) => {
@@ -106,13 +111,35 @@ test.group('openapi:generate on an app whose tags are wrong', group => {
   })
 
   test('warns about a tag the generator does not read', ({ assert }) => {
-    assert.include(output, 'OA-T008 broken.misspelled: @reponse is not a tag the generator reads')
+    // The route has an optional param, so two paths, and the warning once.
+    assert.lengthOf(
+      output.split('OA-T008 broken.misspelled: @reponse is not a tag the generator reads'),
+      2,
+    )
     assert.include(
       output,
       'OA-T008 broken.annotated: @summary is not a tag the generator reads: the first paragraph of the comment is the summary',
     )
     assert.notInclude(output, 'OA-T008 broken.annotated: @internal')
     assert.notInclude(output, 'OA-T008 broken.annotated: @todo')
+  })
+
+  test('warns about an operation without tags and a tag not declared', ({ assert }) => {
+    assert.include(
+      output,
+      'OA-S001 style.untagged: the operation has no tags: add @tags to the action or to its controller class (app/controllers/style_controller.ts:2)',
+    )
+    assert.include(
+      output,
+      "OA-S002 style.wordy: the tag Styling is not declared: add { name: 'Styling' } to document.tags in config/openapi.ts",
+    )
+    assert.notInclude(output, 'the tag Broken is not declared')
+  })
+
+  test('checks the summary against the rules', ({ assert }) => {
+    assert.include(output, 'OA-S003 style.wordy: the summary is longer than 30 characters')
+    assert.include(output, 'OA-S004 style.wordy: the summary ends with a period')
+    assert.notInclude(output, 'OA-S003 style.untagged')
   })
 
   test('warns that a package exception renders a body its declaration does not carry', ({

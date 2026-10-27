@@ -12,9 +12,11 @@ import { unauthorizedException } from '../analysis/exceptions/unauthorized.ts'
 import type { TagContext } from '../analysis/tags/tag_context.ts'
 import { readKernel } from '../routes/kernel.ts'
 import { controllerHandler, type ControllerHandler } from '../routes/controller_handler.ts'
+import { inlineMiddleware } from '../routes/inline_middleware.ts'
 import { MiddlewareResponses } from '../routes/middleware_responses.ts'
 import { TypeToSchema } from '../schema/type_to_schema.ts'
-import type { ErrorsConfig, RouteOperation, SourceLocation } from '../types.ts'
+import type { ErrorsConfig, SourceLocation } from '../types.ts'
+import type { RouteOperation } from '../routes/route_operation.ts'
 import { createProgram } from './create_program.ts'
 import { readEntry, renderEntry } from './entry_module.ts'
 import { defaultInstance, moduleResolver } from './module_resolver.ts'
@@ -109,6 +111,7 @@ export function readApp(
     exceptions,
     configured,
     locate,
+    inlineMiddleware(program),
   )
 
   return {

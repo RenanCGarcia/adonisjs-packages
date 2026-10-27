@@ -8,7 +8,12 @@ import EmailTakenException from '#exceptions/email_taken_exception'
 import PlanLimitException from '#exceptions/plan_limit_exception'
 import MaintenanceException from '#exceptions/maintenance_exception'
 import SeatLimitException from '#exceptions/seat_limit_exception'
-import { echoProbeValidator, searchProbeValidator } from '#validators/probe'
+import {
+  echoProbeValidator,
+  nullableProbeValidator,
+  pagedProbeValidator,
+  searchProbeValidator,
+} from '#validators/probe'
 import type { HttpContext } from '@adonisjs/core/http'
 
 const manifest = fileURLToPath(new URL('../../package.json', import.meta.url))
@@ -32,6 +37,8 @@ export interface UpstreamError {
 
 /**
  * Handler patterns whose responses are not a single returned body.
+ *
+ * @tags Probe
  */
 export default class ProbeController {
   async branches({ request, response, serialize }: HttpContext) {
@@ -190,6 +197,14 @@ export default class ProbeController {
 
   async echo({ request }: HttpContext) {
     return request.validateUsing(echoProbeValidator)
+  }
+
+  async paged({ request }: HttpContext) {
+    return request.validateUsing(pagedProbeValidator)
+  }
+
+  async nullable({ request }: HttpContext) {
+    return request.validateUsing(nullableProbeValidator)
   }
 
   async head() {

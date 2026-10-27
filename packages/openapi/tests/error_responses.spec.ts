@@ -1,6 +1,6 @@
 import { test } from '@japa/runner'
 import type { OpenApiDocument } from '../src/types.ts'
-import { generatePlayground, json, object } from './support/playground.ts'
+import { generatePlayground, inline, json, object, resolved } from './support/playground.ts'
 
 const authorizationFailure = object({
   code: { type: 'string', const: 'E_AUTHORIZATION_FAILURE' },
@@ -40,7 +40,10 @@ test.group('openapi:generate on the playground app: exceptions, middleware and t
 
   test('documents what a route middleware answers with', ({ assert }) => {
     assert.deepEqual(document.paths['/api/v1/account/avatar']!.put!.responses['400'], {
-      description: 'Bad Request',
+      $ref: '#/components/responses/TenantMiddleware',
+    })
+    assert.deepEqual(document.components.responses?.TenantMiddleware, {
+      description: 'The X-Tenant-Id header is missing',
       content: {
         'application/json': {
           schema: {
@@ -58,8 +61,22 @@ test.group('openapi:generate on the playground app: exceptions, middleware and t
     assert.notProperty(document.paths['/api/v1/account/profile']!.get!.responses, '400')
   })
 
+  test('documents what a function passed to .use() answers with', ({ assert }) => {
+    assert.deepEqual(probe('secret').responses['401'], {
+      description: 'Unauthorized',
+      content: {
+        'application/json': {
+          schema: object({
+            code: { type: 'string', const: 'E_WRONG_SECRET' },
+            message: { type: 'string' },
+          }),
+        },
+      },
+    })
+  })
+
   test('documents the status and body of an exception named by @throws', ({ assert }) => {
-    const unprocessable = document.paths['/api/v1/auth/signup']!.post!.responses['422']!
+    const unprocessable = inline(document.paths['/api/v1/auth/signup']!.post!.responses['422'])
 
     assert.equal(unprocessable.description, 'Unprocessable Entity')
     assert.deepEqual(unprocessable.content!['application/json']!.schema.oneOf, [
@@ -79,7 +96,11 @@ test.group('openapi:generate on the playground app: exceptions, middleware and t
 
   test('resolves a @throws class by name without an import', ({ assert }) => {
     assert.notInclude(logs, 'OA-T002')
-    const conflict = document.paths['/api/v1/auth/signup']!.post!.responses['409']!
+
+    const conflict = resolved(
+      document,
+      document.paths['/api/v1/auth/signup']!.post!.responses['409'],
+    )
 
     assert.deepEqual(conflict.content!['application/json']!.schema, {
       type: 'object',
@@ -103,7 +124,7 @@ test.group('openapi:generate on the playground app: exceptions, middleware and t
       object({ code: { type: 'string', const: 'E_EMAIL_TAKEN' }, message: { type: 'string' } }),
     )
     assert.deepEqual(
-      json(probe('verified').responses['403']),
+      json(resolved(document, probe('verified').responses['403'])),
       object({
         code: { type: 'string', const: 'E_EMAIL_NOT_VERIFIED' },
         message: { type: 'string' },

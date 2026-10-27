@@ -134,7 +134,11 @@ export class ExceptionResponses {
 
       if (!exception) return []
 
-      const thrown = { node: expression, exception: expression.expression.getText() }
+      const thrown = {
+        node: expression,
+        exception: expression.expression.getText(),
+        owner: exception.symbol,
+      }
 
       return this.responses(exception).flatMap(({ code, bodies }) =>
         bodies.length ? bodies.map(body => ({ ...thrown, code, body })) : [{ ...thrown, code }],

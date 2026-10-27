@@ -1,6 +1,6 @@
 import ts from 'typescript'
 import { defaultExport } from '../analysis/symbols.ts'
-import type { RouteOperation } from '../types.ts'
+import type { RouteOperation } from './route_operation.ts'
 
 export interface ControllerHandler {
   symbol: ts.Symbol

@@ -10,6 +10,9 @@ interface MailEvent {
   occurredAt: string
 }
 
+/**
+ * @tags Webhooks
+ */
 export default class MailEventsController {
   /**
    * Receive a mail provider event

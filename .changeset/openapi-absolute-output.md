@@ -2,4 +2,4 @@
 '@enzopita/adonisjs-openapi': patch
 ---
 
-`openapi:generate --output` writes an absolute path as given, instead of below the app root (#27).
+An absolute `output` is written as given, instead of below the app root (#27).

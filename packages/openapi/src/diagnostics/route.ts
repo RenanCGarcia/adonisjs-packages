@@ -20,6 +20,32 @@ export function unknownReturnType(route: string, location?: SourceLocation): Dia
   }
 }
 
+export function unmatchedInlineMiddleware(route: string, name: string): Diagnostic {
+  return {
+    code: 'OA-R003',
+    severity: 'warning',
+    route,
+    message: `the middleware ${name} passed to .use() is not a function of the app's sources, its responses are not documented`,
+    fix: 'pass an arrow function or a function the app declares, or register it as a named middleware',
+  }
+}
+
+export function ambiguousInlineMiddleware(
+  route: string,
+  name: string,
+  candidates: SourceLocation[],
+): Diagnostic {
+  const where = candidates.map(({ file, line }) => `${file}:${line}`).join(', ')
+
+  return {
+    code: 'OA-R004',
+    severity: 'warning',
+    route,
+    message: `the middleware ${name} passed to .use() has the same source as several functions of the app (${where}), its responses are not documented`,
+    fix: 'make the functions differ, or register the middleware as a named middleware',
+  }
+}
+
 export function unreadableValidator(
   route: string,
   specifier: string,

@@ -8,7 +8,7 @@ import { addThrown, type ResponseContext } from './context.ts'
 export function fromThrown(context: ResponseContext) {
   const { app, handler, plain } = context
 
-  for (const { code = plain, body, node, exception = '' } of app.exceptions.thrownAnswers(
+  for (const { code = plain, body, node, exception = '', owner } of app.exceptions.thrownAnswers(
     handler.throws,
   ))
     addThrown(
@@ -16,6 +16,7 @@ export function fromThrown(context: ResponseContext) {
       { kind: 'throw', exception, location: app.locate(node) },
       code,
       body ? [body] : [],
+      { owner },
     )
 }
 
@@ -25,8 +26,8 @@ export function fromThrown(context: ResponseContext) {
 export function fromThrowers(context: ResponseContext) {
   const { app, handler } = context
 
-  for (const { code, bodies, source } of app.errors.throwerResponses(handler.invoked))
-    addThrown(context, source, code, bodies)
+  for (const { code, bodies, source, owner } of app.errors.throwerResponses(handler.invoked))
+    addThrown(context, source, code, bodies, { owner })
 }
 
 export function fromThrowsTags(context: ResponseContext, tags: ThrowsTag[]) {
@@ -40,6 +41,9 @@ export function fromThrowsTags(context: ResponseContext, tags: ThrowsTag[]) {
       diagnostics.push(statuslessException(route.name, exception.name, location))
 
     for (const { code, bodies } of responses)
-      addThrown(context, { kind: 'tag', tag: '@throws', location }, code, bodies, reason)
+      addThrown(context, { kind: 'tag', tag: '@throws', location }, code, bodies, {
+        reason,
+        owner: exception.symbol,
+      })
   }
 }

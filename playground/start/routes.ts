@@ -73,6 +73,10 @@ router
         router.get('gated', [controllers.Probe, 'gated']).use(middleware.verifiedEmail())
         router.get('reasoned', [controllers.Probe, 'reasoned']).use(middleware.verifiedEmail())
         router.get('authorized', [controllers.Probe, 'authorized'])
+        router
+          .get('screened', [controllers.Probe, 'authorized'])
+          .as('screened')
+          .use(middleware.verifiedEmail())
         router.get('viewed', [controllers.Probe, 'viewed'])
         router.get('hidden', [controllers.Probe, 'hidden'])
         router.get('users/:id', [controllers.Probe, 'found'])
@@ -81,11 +85,26 @@ router
         router.get('maintenance', [controllers.Probe, 'maintenance'])
         router.get('upstream', [controllers.Probe, 'upstream'])
         router.get('throttled', [controllers.Probe, 'text']).as('throttled').use(throttle)
+        router
+          .get('secret', [controllers.Probe, 'text'])
+          .as('secret')
+          .use(async ({ request, response }, next) => {
+            if (request.header('x-probe-secret') !== 'open sesame') {
+              return response.unauthorized({
+                code: 'E_WRONG_SECRET' as const,
+                message: 'Send the probe secret',
+              })
+            }
+
+            return next()
+          })
         router.get('model', [controllers.Probe, 'model'])
         router.get('collections', [controllers.Probe, 'collections'])
         router.get('search', [controllers.Probe, 'search'])
         router.get('items/:id?', [controllers.Probe, 'item'])
         router.route('echo', ['GET', 'POST'], [controllers.Probe, 'echo'])
+        router.post('paged', [controllers.Probe, 'paged'])
+        router.post('nullable', [controllers.Probe, 'nullable'])
         router.route('head', ['HEAD'], [controllers.Probe, 'head'])
         router.get('closure', () => ({ ok: true })).as('closure')
       })

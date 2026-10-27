@@ -1,4 +1,5 @@
-import type { JsonSchema, OpenApiParameter, RouteOperation } from '../types.ts'
+import type { JsonSchema, OpenApiParameter } from '../types.ts'
+import type { RouteOperation } from '../routes/route_operation.ts'
 
 export function parametersFor(route: RouteOperation, query?: JsonSchema, params?: JsonSchema) {
   const path = route.pathParams.map((name): OpenApiParameter => ({

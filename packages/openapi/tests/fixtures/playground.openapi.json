@@ -9,7 +9,7 @@
       "post": {
         "operationId": "auth.new_account.store",
         "tags": [
-          "auth"
+          "Auth"
         ],
         "responses": {
           "201": {
@@ -45,28 +45,7 @@
             }
           },
           "409": {
-            "description": "Conflict",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "code": {
-                      "type": "string",
-                      "const": "E_EMAIL_TAKEN"
-                    },
-                    "message": {
-                      "type": "string"
-                    }
-                  },
-                  "additionalProperties": false,
-                  "required": [
-                    "code",
-                    "message"
-                  ]
-                }
-              }
-            }
+            "$ref": "#/components/responses/EmailTakenException"
           },
           "422": {
             "description": "Unprocessable Entity",
@@ -135,6 +114,7 @@
                 },
                 "additionalProperties": false,
                 "required": [
+                  "fullName",
                   "email",
                   "password",
                   "passwordConfirmation"
@@ -149,7 +129,7 @@
       "post": {
         "operationId": "auth.access_tokens.store",
         "tags": [
-          "auth"
+          "Auth"
         ],
         "responses": {
           "200": {
@@ -226,7 +206,7 @@
       "get": {
         "operationId": "profile.profile.show",
         "tags": [
-          "profile"
+          "Account"
         ],
         "responses": {
           "200": {
@@ -291,7 +271,7 @@
       "post": {
         "operationId": "profile.access_tokens.destroy",
         "tags": [
-          "profile"
+          "Auth"
         ],
         "responses": {
           "200": {
@@ -356,7 +336,7 @@
       "put": {
         "operationId": "profile.avatar.update",
         "tags": [
-          "profile"
+          "Account"
         ],
         "responses": {
           "200": {
@@ -383,28 +363,7 @@
             }
           },
           "400": {
-            "description": "Bad Request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "code": {
-                      "type": "string",
-                      "const": "E_INVALID_TENANT_HEADER"
-                    },
-                    "message": {
-                      "type": "string"
-                    }
-                  },
-                  "additionalProperties": false,
-                  "required": [
-                    "code",
-                    "message"
-                  ]
-                }
-              }
-            }
+            "$ref": "#/components/responses/TenantMiddleware"
           },
           "401": {
             "description": "Unauthorized",
@@ -478,35 +437,14 @@
       "delete": {
         "operationId": "profile.avatar.destroy",
         "tags": [
-          "profile"
+          "Account"
         ],
         "responses": {
           "204": {
             "description": "No Content"
           },
           "400": {
-            "description": "Bad Request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "code": {
-                      "type": "string",
-                      "const": "E_INVALID_TENANT_HEADER"
-                    },
-                    "message": {
-                      "type": "string"
-                    }
-                  },
-                  "additionalProperties": false,
-                  "required": [
-                    "code",
-                    "message"
-                  ]
-                }
-              }
-            }
+            "$ref": "#/components/responses/TenantMiddleware"
           },
           "401": {
             "description": "Unauthorized",
@@ -681,7 +619,7 @@
         "operationId": "webhooks.mail",
         "summary": "Receive a mail provider event",
         "tags": [
-          "webhooks"
+          "Webhooks"
         ],
         "responses": {
           "204": {
@@ -725,7 +663,7 @@
       "get": {
         "operationId": "probe.probe.branches",
         "tags": [
-          "probe"
+          "Probe"
         ],
         "responses": {
           "200": {
@@ -799,7 +737,7 @@
       "get": {
         "operationId": "probe.probe.empty",
         "tags": [
-          "probe"
+          "Probe"
         ],
         "responses": {
           "204": {
@@ -812,7 +750,7 @@
       "get": {
         "operationId": "probe.probe.maybe",
         "tags": [
-          "probe"
+          "Probe"
         ],
         "responses": {
           "200": {
@@ -841,7 +779,7 @@
       "get": {
         "operationId": "probe.probe.back",
         "tags": [
-          "probe"
+          "Probe"
         ],
         "responses": {
           "302": {
@@ -861,7 +799,7 @@
       "get": {
         "operationId": "probe.probe.text",
         "tags": [
-          "probe"
+          "Probe"
         ],
         "responses": {
           "200": {
@@ -881,7 +819,7 @@
       "get": {
         "operationId": "probe.probe.csv",
         "tags": [
-          "probe"
+          "Probe"
         ],
         "responses": {
           "200": {
@@ -901,7 +839,7 @@
       "post": {
         "operationId": "probe.probe.json_created",
         "tags": [
-          "probe"
+          "Probe"
         ],
         "responses": {
           "201": {
@@ -930,7 +868,7 @@
       "get": {
         "operationId": "probe.probe.limited",
         "tags": [
-          "probe"
+          "Probe"
         ],
         "responses": {
           "429": {
@@ -966,7 +904,7 @@
       "post": {
         "operationId": "probe.probe.sent",
         "tags": [
-          "probe"
+          "Probe"
         ],
         "responses": {
           "202": {
@@ -995,7 +933,7 @@
       "get": {
         "operationId": "probe.probe.aborted",
         "tags": [
-          "probe"
+          "Probe"
         ],
         "responses": {
           "403": {
@@ -1043,7 +981,7 @@
       "get": {
         "operationId": "probe.probe.download",
         "tags": [
-          "probe"
+          "Probe"
         ],
         "responses": {
           "200": {
@@ -1064,7 +1002,7 @@
       "get": {
         "operationId": "probe.probe.attachment",
         "tags": [
-          "probe"
+          "Probe"
         ],
         "responses": {
           "200": {
@@ -1092,7 +1030,7 @@
       "get": {
         "operationId": "probe.probe.report",
         "tags": [
-          "probe"
+          "Probe"
         ],
         "responses": {
           "200": {
@@ -1113,7 +1051,7 @@
       "get": {
         "operationId": "probe.probe.exported",
         "tags": [
-          "probe"
+          "Probe"
         ],
         "responses": {
           "200": {
@@ -1141,7 +1079,7 @@
       "get": {
         "operationId": "probe.probe.stream",
         "tags": [
-          "probe"
+          "Probe"
         ],
         "responses": {
           "200": {
@@ -1162,7 +1100,7 @@
       "get": {
         "operationId": "probe.probe.thrown",
         "tags": [
-          "probe"
+          "Probe"
         ],
         "responses": {
           "200": {
@@ -1215,7 +1153,7 @@
       "get": {
         "operationId": "probe.verified",
         "tags": [
-          "probe"
+          "Probe"
         ],
         "responses": {
           "200": {
@@ -1229,28 +1167,7 @@
             }
           },
           "403": {
-            "description": "Forbidden",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "code": {
-                      "type": "string",
-                      "const": "E_EMAIL_NOT_VERIFIED"
-                    },
-                    "message": {
-                      "type": "string"
-                    }
-                  },
-                  "additionalProperties": false,
-                  "required": [
-                    "code",
-                    "message"
-                  ]
-                }
-              }
-            }
+            "$ref": "#/components/responses/EmailNotVerifiedException"
           }
         }
       }
@@ -1259,7 +1176,7 @@
       "get": {
         "operationId": "probe.probe.gated",
         "tags": [
-          "probe"
+          "Probe"
         ],
         "responses": {
           "200": {
@@ -1333,7 +1250,7 @@
       "get": {
         "operationId": "probe.probe.reasoned",
         "tags": [
-          "probe"
+          "Probe"
         ],
         "responses": {
           "200": {
@@ -1377,7 +1294,7 @@
       "get": {
         "operationId": "probe.probe.authorized",
         "tags": [
-          "probe"
+          "Probe"
         ],
         "responses": {
           "200": {
@@ -1426,11 +1343,85 @@
         }
       }
     },
+    "/api/v1/probe/screened": {
+      "get": {
+        "operationId": "probe.screened",
+        "tags": [
+          "Probe"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "authorized": {
+                      "type": "boolean"
+                    }
+                  },
+                  "additionalProperties": false,
+                  "required": [
+                    "authorized"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The email address of the account is not verified; Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "const": "E_AUTHORIZATION_FAILURE"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "additionalProperties": false,
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "const": "E_EMAIL_NOT_VERIFIED"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "additionalProperties": false,
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/probe/viewed": {
       "get": {
         "operationId": "probe.probe.viewed",
         "tags": [
-          "probe"
+          "Probe"
         ],
         "responses": {
           "200": {
@@ -1483,7 +1474,7 @@
       "get": {
         "operationId": "probe.probe.hidden",
         "tags": [
-          "probe"
+          "Probe"
         ],
         "responses": {
           "200": {
@@ -1560,7 +1551,7 @@
       "get": {
         "operationId": "probe.probe.found",
         "tags": [
-          "probe"
+          "Probe"
         ],
         "responses": {
           "200": {
@@ -1609,7 +1600,7 @@
       "get": {
         "operationId": "probe.probe.plan",
         "tags": [
-          "probe"
+          "Probe"
         ],
         "responses": {
           "200": {
@@ -1665,7 +1656,7 @@
       "get": {
         "operationId": "probe.probe.seats",
         "tags": [
-          "probe"
+          "Probe"
         ],
         "responses": {
           "200": {
@@ -1721,7 +1712,7 @@
       "get": {
         "operationId": "probe.probe.maintenance",
         "tags": [
-          "probe"
+          "Probe"
         ],
         "responses": {
           "200": {
@@ -1760,7 +1751,7 @@
       "get": {
         "operationId": "probe.probe.upstream",
         "tags": [
-          "probe"
+          "Probe"
         ],
         "responses": {
           "502": {
@@ -1797,7 +1788,7 @@
       "get": {
         "operationId": "probe.throttled",
         "tags": [
-          "probe"
+          "Probe"
         ],
         "responses": {
           "200": {
@@ -1841,11 +1832,55 @@
         }
       }
     },
+    "/api/v1/probe/secret": {
+      "get": {
+        "operationId": "probe.secret",
+        "tags": [
+          "Probe"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string",
+                      "const": "E_WRONG_SECRET"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "additionalProperties": false,
+                  "required": [
+                    "code",
+                    "message"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/probe/model": {
       "get": {
         "operationId": "probe.probe.model",
         "tags": [
-          "probe"
+          "Probe"
         ],
         "responses": {
           "200": {
@@ -1863,7 +1898,7 @@
       "get": {
         "operationId": "probe.probe.collections",
         "tags": [
-          "probe"
+          "Probe"
         ],
         "responses": {
           "200": {
@@ -1904,7 +1939,7 @@
       "get": {
         "operationId": "probe.probe.search",
         "tags": [
-          "probe"
+          "Probe"
         ],
         "responses": {
           "200": {
@@ -1972,7 +2007,7 @@
       "get": {
         "operationId": "probe.probe.item",
         "tags": [
-          "probe"
+          "Probe"
         ],
         "responses": {
           "200": {
@@ -2008,7 +2043,7 @@
       "get": {
         "operationId": "probe.probe.item.without_id",
         "tags": [
-          "probe"
+          "Probe"
         ],
         "responses": {
           "200": {
@@ -2034,7 +2069,7 @@
       "get": {
         "operationId": "probe.probe.echo.get",
         "tags": [
-          "probe"
+          "Probe"
         ],
         "responses": {
           "200": {
@@ -2081,7 +2116,7 @@
       "post": {
         "operationId": "probe.probe.echo.post",
         "tags": [
-          "probe"
+          "Probe"
         ],
         "responses": {
           "200": {
@@ -2128,6 +2163,172 @@
                 "additionalProperties": false,
                 "required": [
                   "message"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/probe/paged": {
+      "post": {
+        "operationId": "probe.probe.paged",
+        "tags": [
+          "Probe"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "query": {
+                      "type": "object",
+                      "properties": {
+                        "page": {
+                          "type": "number"
+                        }
+                      },
+                      "additionalProperties": false,
+                      "required": [
+                        "page"
+                      ]
+                    }
+                  },
+                  "additionalProperties": false,
+                  "required": [
+                    "query"
+                  ]
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "query": {
+                    "type": "object",
+                    "properties": {
+                      "page": {
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "page"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "additionalProperties": false,
+                "required": [
+                  "query"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/probe/nullable": {
+      "post": {
+        "operationId": "probe.probe.nullable",
+        "tags": [
+          "Probe"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "bio": {
+                      "type": "string"
+                    },
+                    "website": {
+                      "anyOf": [
+                        {
+                          "type": "null"
+                        },
+                        {
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "nickname": {
+                      "anyOf": [
+                        {
+                          "type": "null"
+                        },
+                        {
+                          "type": "string"
+                        }
+                      ]
+                    }
+                  },
+                  "additionalProperties": false,
+                  "required": [
+                    "nickname"
+                  ]
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "nickname": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "bio": {
+                    "type": "string"
+                  },
+                  "website": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "additionalProperties": false,
+                "required": [
+                  "nickname"
                 ]
               }
             }
@@ -2248,6 +2449,80 @@
         ]
       }
     },
+    "responses": {
+      "EmailNotVerifiedException": {
+        "description": "The email address of the account is not verified",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "string",
+                  "const": "E_EMAIL_NOT_VERIFIED"
+                },
+                "message": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "code",
+                "message"
+              ]
+            }
+          }
+        }
+      },
+      "EmailTakenException": {
+        "description": "Another account uses this email address",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "string",
+                  "const": "E_EMAIL_TAKEN"
+                },
+                "message": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "code",
+                "message"
+              ]
+            }
+          }
+        }
+      },
+      "TenantMiddleware": {
+        "description": "The X-Tenant-Id header is missing",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "string",
+                  "const": "E_INVALID_TENANT_HEADER"
+                },
+                "message": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "code",
+                "message"
+              ]
+            }
+          }
+        }
+      }
+    },
     "securitySchemes": {
       "accessToken": {
         "type": "http",
@@ -2262,8 +2537,28 @@
   },
   "tags": [
     {
+      "name": "Auth",
+      "description": "Sign up and log in"
+    },
+    {
+      "name": "Account",
+      "description": "The signed-in user"
+    },
+    {
       "name": "Users",
       "description": "Public user profiles"
+    },
+    {
+      "name": "Directory",
+      "description": "Listings of many users"
+    },
+    {
+      "name": "Webhooks",
+      "description": "Events other services post"
+    },
+    {
+      "name": "Probe",
+      "description": "Handler patterns the generator documents"
     }
   ]
 }

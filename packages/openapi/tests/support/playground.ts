@@ -1,20 +1,48 @@
 import { execFile } from 'node:child_process'
-import { cp, mkdir, mkdtemp, readFile, rm, symlink } from 'node:fs/promises'
+import { rmSync } from 'node:fs'
+import { cp, mkdir, mkdtemp, readFile, symlink } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
-import type { JsonSchema, OpenApiDocument, OpenApiResponse } from '../../src/types.ts'
+import type {
+  JsonSchema,
+  OpenApiDocument,
+  OpenApiReference,
+  OpenApiResponse,
+} from '../../src/types.ts'
 
 export const playground = new URL('../../../../playground/', import.meta.url)
 export const brokenApp = new URL('../fixtures/broken_app/', import.meta.url)
 export const unauthorizedApp = new URL('../fixtures/unauthorized_app/', import.meta.url)
+export const inlineApp = new URL('../fixtures/inline_app/', import.meta.url)
+export const componentsApp = new URL('../fixtures/components_app/', import.meta.url)
 export const run = promisify(execFile)
 
-const output = 'tmp/openapi.spec.json'
+/**
+ * The response a test expects in the operation, failing on a `$ref` to `components.responses`.
+ */
+export function inline(response: OpenApiResponse | OpenApiReference | undefined) {
+  if (!response || '$ref' in response)
+    throw new Error(`expected an inline response, got ${JSON.stringify(response)}`)
 
-export const json = (response: OpenApiResponse | undefined) =>
-  response!.content!['application/json']!.schema
+  return response
+}
+
+/**
+ * The response itself, or the one its `$ref` names in `components.responses`.
+ */
+export function resolved(
+  document: OpenApiDocument,
+  response: OpenApiResponse | OpenApiReference | undefined,
+) {
+  if (!response || !('$ref' in response)) return inline(response)
+
+  return inline(document.components.responses?.[response.$ref.split('/').at(-1)!])
+}
+
+export const json = (response: OpenApiResponse | OpenApiReference | undefined) =>
+  inline(response).content!['application/json']!.schema
 
 export const object = (properties: Record<string, JsonSchema>): JsonSchema => ({
   type: 'object',
@@ -26,19 +54,13 @@ export const object = (properties: Record<string, JsonSchema>): JsonSchema => ({
 let generated: Promise<{ document: OpenApiDocument; logs: string; raw: string }> | undefined
 
 /**
- * Generates the playground document once for every spec that reads it.
+ * Generates the document of a copy of the playground once for every spec that reads it.
  */
 export function generatePlayground() {
   generated ??= (async () => {
-    await run('node', ['ace', 'codegen'], { cwd: playground })
-
-    const { stdout: logs } = await run('node', ['ace', 'openapi:generate', `--output=${output}`], {
-      cwd: playground,
-    })
-
-    const raw = await readFile(new URL(output, playground), 'utf8')
+    const { dir, output: logs } = await generateInCopy(async () => {})
+    const raw = await readFile(join(dir, 'openapi.json'), 'utf8')
     const document: OpenApiDocument = JSON.parse(raw)
-    await rm(new URL(output, playground))
 
     return { document, logs, raw }
   })()
@@ -46,13 +68,22 @@ export function generatePlayground() {
   return generated
 }
 
+const copies = new Set<string>()
+
+// Specs read a copy after it is generated, so the copies go when the test process does.
+process.once('exit', () => {
+  for (const dir of copies) rmSync(dir, { recursive: true, force: true })
+})
+
 /**
- * A copy of the playground with `overlay` laid over it, so the playground stays valid. Returns the
- * copy's directory and what `openapi:generate` printed.
+ * A copy of the playground with `overlay` laid over it, so a test can change it and write in it
+ * while the playground stays as it is.
  */
-export async function generateInCopy(overlay: (dir: string) => Promise<void>) {
+export async function copyPlayground(overlay: (dir: string) => Promise<void>) {
   const source = fileURLToPath(playground)
   const dir = await mkdtemp(join(tmpdir(), 'openapi-copy-'))
+
+  copies.add(dir)
 
   await cp(source, dir, {
     recursive: true,
@@ -63,6 +94,16 @@ export async function generateInCopy(overlay: (dir: string) => Promise<void>) {
   await mkdir(join(dir, 'tmp'))
   await overlay(dir)
   await run('node', ['ace', 'codegen'], { cwd: dir })
+
+  return dir
+}
+
+/**
+ * Generates the document of a copy of the playground with `overlay` laid over it. Returns the
+ * copy's directory and what `openapi:generate` printed.
+ */
+export async function generateInCopy(overlay: (dir: string) => Promise<void>) {
+  const dir = await copyPlayground(overlay)
 
   const result = await run('node', ['ace', 'openapi:generate'], { cwd: dir }).then(
     success => success,

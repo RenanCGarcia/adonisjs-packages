@@ -1,6 +1,6 @@
 import ts from 'typescript'
 import { answerOf, type Answer } from './answers.ts'
-import { methodBodies, responseCalls } from './response_calls.ts'
+import { responseCalls } from './response_calls.ts'
 import { statusOf } from './symbols.ts'
 
 export interface HandlerResponses {
@@ -22,19 +22,12 @@ export interface HandlerResponses {
 }
 
 /**
- * What `method` of an action or a middleware answers with besides its return type: a helper such
- * as `response.forbidden(body)`, `send()` and `json()`, whose status is the literal of a
- * `response.status(403)` they are chained to, `abort()`, `redirect()`, and the exceptions it throws.
+ * What the function bodies of an action or a middleware answer with besides their return type: a
+ * helper such as `response.forbidden(body)`, `send()` and `json()`, whose status is the literal of
+ * a `response.status(403)` they are chained to, `abort()`, `redirect()`, and the exceptions thrown.
  */
-export function handlerResponses(
-  checker: ts.TypeChecker,
-  instance: ts.Type,
-  method: string,
-): HandlerResponses {
-  const { calls, throws, invoked } = responseCalls(
-    checker,
-    methodBodies(checker, instance, [method]),
-  )
+export function handlerResponses(checker: ts.TypeChecker, bodies: ts.Node[]): HandlerResponses {
+  const { calls, throws, invoked } = responseCalls(checker, bodies)
 
   const handler: HandlerResponses = { answers: [], throws, invoked, headers: [] }
 

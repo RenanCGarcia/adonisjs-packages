@@ -2,6 +2,7 @@ import { dirname, isAbsolute, relative, resolve } from 'node:path'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import { flags } from '@adonisjs/core/ace'
+import { sendOutput } from '../src/output_message.ts'
 import type { ResponseSource } from '../src/types.ts'
 import { OpenApiCommand } from './base_command.ts'
 
@@ -34,12 +35,6 @@ export default class GenerateOpenApi extends OpenApiCommand {
 
   @flags.string({
     description:
-      'Output file, absolute or relative to the app root. Defaults to config/openapi.ts "output"',
-  })
-  declare output?: string
-
-  @flags.string({
-    description:
       'Print where each response of the named route comes from, without writing the file',
   })
   declare explain?: string
@@ -63,16 +58,22 @@ export default class GenerateOpenApi extends OpenApiCommand {
 
   async run() {
     const startTime = process.hrtime()
-    const { document, provenance, config, failed } = await this.generate()
+
+    // Explaining writes nothing, so a warning has nothing to block.
+    const { document, provenance, config, failed } = await this.generate(
+      this.explain ? { strict: false } : {},
+    )
 
     if (this.explain) return this.#explain(this.explain, provenance)
 
-    if (failed) return
+    if (failed) return this.logger.error('The errors above block the document')
 
     const appRoot = fileURLToPath(this.app.appRoot)
-    const output = resolve(appRoot, this.output ?? config.output)
+    const output = resolve(appRoot, config.output)
     await mkdir(dirname(output), { recursive: true })
     await writeFile(output, `${JSON.stringify(document, null, 2)}\n`)
+
+    sendOutput(output)
 
     const shown = relative(appRoot, output)
     const inside = !shown.startsWith('..') && !isAbsolute(shown)

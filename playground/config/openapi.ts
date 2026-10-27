@@ -5,15 +5,26 @@ import { defineConfig } from '@enzopita/adonisjs-openapi'
 
 export default defineConfig({
   output: 'openapi.json',
-  info: { title: 'API', version: '1.0.0' },
-  tags: [{ name: 'Users', description: 'Public user profiles' }],
-  securitySchemes: {
-    accessToken: { type: 'http', scheme: 'bearer' },
-    tenant: { type: 'apiKey', in: 'header', name: 'X-Tenant-Id' },
+  document: {
+    info: { title: 'API', version: '1.0.0' },
+    tags: [
+      { name: 'Auth', description: 'Sign up and log in' },
+      { name: 'Account', description: 'The signed-in user' },
+      { name: 'Users', description: 'Public user profiles' },
+      { name: 'Directory', description: 'Listings of many users' },
+      { name: 'Webhooks', description: 'Events other services post' },
+      { name: 'Probe', description: 'Handler patterns the generator documents' },
+    ],
   },
-  middlewareSecurity: {
-    auth: 'accessToken',
-    tenant: 'tenant',
+  security: {
+    schemes: {
+      accessToken: { type: 'http', scheme: 'bearer' },
+      tenant: { type: 'apiKey', in: 'header', name: 'X-Tenant-Id' },
+    },
+    middleware: {
+      auth: 'accessToken',
+      tenant: 'tenant',
+    },
   },
   errors: {
     throwers: {

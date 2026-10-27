@@ -108,12 +108,7 @@ export default defineConfig({
   | the production build.
   |
   */
-  metaFiles: [
-    {
-      pattern: 'openapi.json',
-      reloadServer: false,
-    },
-  ],
+  metaFiles: [],
 
   hooks: {
     init: [
