@@ -1,5 +1,23 @@
 # @enzopita/adonisjs-openapi
 
+## 1.1.0
+
+### Minor Changes
+
+- [#45](https://github.com/enzopita/adonisjs-packages/pull/45) [`f75a2a0`](https://github.com/enzopita/adonisjs-packages/commit/f75a2a07912e67322c534a48c4a712e56455b4e7) Thanks [@enzopita](https://github.com/enzopita)! - Add an `ErrorCode` enum schema with every literal `code` the app's error responses carry.
+
+- [#46](https://github.com/enzopita/adonisjs-packages/pull/46) [`f395b9c`](https://github.com/enzopita/adonisjs-packages/commit/f395b9cc7fb82c57dfc2511c74d2be2b7532dea3) Thanks [@enzopita](https://github.com/enzopita)! - An `error instanceof A && …` branch of the exception handler now adds its body to the responses of `A`, which still goes on to the next step, instead of joining the generic error body. `errors.throwers` keys now also match calls in the `handle()` of the route's middleware, and the response names that middleware as its source.
+
+- [#51](https://github.com/enzopita/adonisjs-packages/pull/51) [`2d01ae2`](https://github.com/enzopita/adonisjs-packages/commit/2d01ae22e8f01552eee55117feb988fcb067add7) Thanks [@enzopita](https://github.com/enzopita)! - Document the responses of a method or a bound function passed to `.use()`, such as `.use(guard.check)`. The generator finds such a function where V8 says it is declared, through the source map, when no function of the app has its source. `OA-R003` is left for a function neither finds, such as one from a package.
+
+- [#48](https://github.com/enzopita/adonisjs-packages/pull/48) [`b22b6ff`](https://github.com/enzopita/adonisjs-packages/commit/b22b6ffb7d8f9cba32b924c7e365a485aa2d6c75) Thanks [@enzopita](https://github.com/enzopita)! - Read the doc comments of properties: the text becomes `description`, `@example` adds to `examples`, `@default` becomes `default` and `@deprecated` sets `deprecated: true`. `@example {200} name` on an action gives the body of that status an example, read from a `const` holding JSON. A value that cannot be read gets `OA-T009`.
+
+- [#44](https://github.com/enzopita/adonisjs-packages/pull/44) [`bdda613`](https://github.com/enzopita/adonisjs-packages/commit/bdda6132f88962da80bd1fee0ed58e1fed2e9313) Thanks [@enzopita](https://github.com/enzopita)! - Documents the `operationId` rule as stable and adds the `operationId` config function to replace it. Two operations with the same id fail generation with `OA-O001`.
+
+### Patch Changes
+
+- [#47](https://github.com/enzopita/adonisjs-packages/pull/47) [`a458126`](https://github.com/enzopita/adonisjs-packages/commit/a458126b0a3861a5a59a22e0abf38398068ac81e) Thanks [@enzopita](https://github.com/enzopita)! - Stop warning OA-R003 for a middleware passed to `.use()` that an `errors.middleware` key names, such as a `limiter.define()` throttle.
+
 ## 1.0.0
 
 ### Major Changes
