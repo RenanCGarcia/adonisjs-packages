@@ -26,6 +26,10 @@ function isIncluded(routeName: string, filters: OpenApiConfig['routes']) {
   return true
 }
 
+function routeKey(route: { domain: string; pattern: string; methods: string[] }) {
+  return `${route.domain}:${route.pattern}:${route.methods.join(',')}`
+}
+
 /**
  * `/users/:id/:slug?` becomes `/users/{id}/{slug}`, the only form OpenAPI paths accept.
  */
@@ -69,7 +73,7 @@ export async function collectRoutes(
   for (const route of Object.values(live).flat()) {
     const entries = [...route.middleware.all()]
 
-    middlewareByRoute.set(`${route.domain}:${route.pattern}:${route.methods.join(',')}`, {
+    middlewareByRoute.set(routeKey(route), {
       middleware: entries.flatMap(entry => ('name' in entry && entry.name ? [entry.name] : [])),
       // `node ace list:routes` names a function without a name `closure`.
       inlineMiddleware: entries.flatMap(entry =>
@@ -109,7 +113,7 @@ export async function collectRoutes(
     const operation = {
       name: route.name,
       methods,
-      ...(middlewareByRoute.get(`${route.domain}:${route.pattern}:${route.methods.join(',')}`) ?? {
+      ...(middlewareByRoute.get(routeKey(route)) ?? {
         middleware: [],
         inlineMiddleware: [],
       }),

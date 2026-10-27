@@ -6,7 +6,7 @@ import { addThrown, type ResponseContext } from './context.ts'
  * The tags to document, a declared body first so a reason alone can describe the status it
  * declares, and the reasons for a status nothing documents.
  */
-function applicable(tags: ResponseTag[], documented: (code: string) => boolean) {
+export function applicable(tags: ResponseTag[], documented: (code: string) => boolean) {
   const declared = tags.filter(({ body }) => body)
   const codes = new Set(declared.map(({ code }) => code))
   const described = tags.filter(({ body }) => !body)
