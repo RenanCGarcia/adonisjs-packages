@@ -28,6 +28,62 @@ export interface OperationDocs {
   problems: Diagnostic[]
 }
 
+interface Collected {
+  throws: ThrowsTag[]
+  responses: ResponseTag[]
+  examples: ExampleTag[]
+  paragraphs: string[]
+  requestBody?: ts.Type
+  deprecated: boolean
+}
+
+type TagReader = (context: TagContext, tag: ts.JSDocTag, collected: Collected) => void
+
+const readThrows: TagReader = (context, tag, { throws }) => {
+  const thrown = ts.isJSDocThrowsTag(tag) ? throwsTag(context, tag) : undefined
+
+  if (thrown) throws.push(thrown)
+}
+
+const TAG_READERS = new Map<string, TagReader>([
+  ['throws', readThrows],
+  ['exception', readThrows],
+  [
+    'response',
+    (context, tag, { responses }) => {
+      const response = responseTag(context, tag)
+
+      if (response) responses.push(response)
+    },
+  ],
+  [
+    'example',
+    (context, tag, { examples }) => {
+      const example = exampleTag(context, tag)
+
+      if (example) examples.push(example)
+    },
+  ],
+  [
+    'requestBody',
+    (context, tag, collected) => {
+      collected.requestBody = requestBodyTag(context, tag)
+    },
+  ],
+  [
+    'deprecated',
+    (_context, _tag, collected) => {
+      collected.deprecated = true
+    },
+  ],
+  [
+    'remarks',
+    (_context, tag, { paragraphs }) => {
+      if (tagText(tag)) paragraphs.push(tagText(tag))
+    },
+  ],
+])
+
 export function operationDocs(
   environment: Omit<TagContext, 'method' | 'problems'>,
   controller: ts.ClassDeclaration,
@@ -35,38 +91,29 @@ export function operationDocs(
 ): OperationDocs {
   const context: TagContext = { ...environment, method, problems: [] }
   const doc = jsDoc(method)
-  const throws: ThrowsTag[] = []
-  const responses: ResponseTag[] = []
-  const examples: ExampleTag[] = []
-  let requestBody: ts.Type | undefined
   const tags = tagsOf(doc) ?? tagsOf(jsDoc(controller))
-  let deprecated = false
 
   const [summary, ...paragraphs] = (ts.getTextOfJSDocComment(doc?.comment) ?? '')
     .split(/\n\s*\n/)
     .map(paragraph => paragraph.trim())
     .filter(Boolean)
 
+  const collected: Collected = {
+    throws: [],
+    responses: [],
+    examples: [],
+    paragraphs,
+    deprecated: false,
+  }
+
   for (const tag of doc?.tags ?? []) {
-    const name = tag.tagName.text
+    const read = TAG_READERS.get(tag.tagName.text)
 
-    if (ts.isJSDocThrowsTag(tag)) {
-      const thrown = throwsTag(context, tag)
-
-      if (thrown) throws.push(thrown)
-    } else if (name === 'response') {
-      const response = responseTag(context, tag)
-
-      if (response) responses.push(response)
-    } else if (name === 'example') {
-      const example = exampleTag(context, tag)
-
-      if (example) examples.push(example)
-    } else if (name === 'requestBody') requestBody = requestBodyTag(context, tag)
-    else if (ts.isJSDocDeprecatedTag(tag)) deprecated = true
-    else if (name === 'remarks' && tagText(tag)) paragraphs.push(tagText(tag))
+    if (read) read(context, tag, collected)
     else context.problems.push(...unknownTag(tag, context.locate))
   }
+
+  const { throws, responses, examples, requestBody, deprecated } = collected
 
   return {
     meta: {

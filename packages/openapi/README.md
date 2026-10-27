@@ -171,7 +171,7 @@ The generator follows `throw new X()` in the app's code. It does not read packag
   - `failures.consume` matches `failures.consume(key)`, where `failures` is the local name of the receiver, whatever its type.
   - `this.getBouncer().authorize()` reads as `this.authorize`, and `bouncerFor(user).authorize()` as `bouncerFor.authorize`, so `bouncer.authorize` matches neither.
 - `errors.middleware` names the exception a middleware throws inside a package. The key is the middleware's name as `node ace list:routes` shows it: a named middleware, such as `auth`, or the name of a function middleware, such as the `globalThrottle` that `limiter.define('global', ...)` returns. It can also be a specifier in `start/kernel.ts`. The generator matches names and loads no module to do it.
-- `errors.body` is the body of an error the exception handler renders without a branch for its class, as a type expression such as `"import('#types/api').ApiError"`. Without it, that body is read from the exception handler.
+- `errors.body` is the body of an error the exception handler renders without a branch for its class, as a type expression such as `"import('#types/api').ApiError"`. Without it, that body is read from the exception handler, see [Error bodies](#error-bodies).
 
 A `throwers` or `middleware` key that matches nothing in the documented routes, such as a misspelled `bouncer.authorise`, gets `OA-E003`. An entry's status is read from the source of its class, which the generator never runs: a numeric `status` field, `static status`, the `status` its constructor sets, or the one of a class it extends. A package class is read from its JavaScript, since its declaration file only says `status: number`. An entry whose status cannot be read gets `OA-E001` and is ignored.
 
@@ -201,7 +201,7 @@ export default class UsersController {
 }
 ```
 
-The first paragraph is the `summary`. The next paragraphs and `@remarks` are the `description`.
+The first paragraph of a doc comment is its summary, and the next paragraphs and `@remarks` are its description. On a controller method they become the `summary` and the `description` of the operation. On a middleware or an exception class they become the description of each response the class produces, see [Describe a response once](#describe-a-response-once).
 
 A doc tag is an `@` line of the doc comment, such as `@response {404} User not found`. The generator reads seven doc tags, and each form of a doc tag has one meaning. `@response` has two forms, told apart by what follows the status code: a reason alone describes a response the generator documents, and a `{Type}` declares a response with that body.
 
@@ -228,7 +228,7 @@ Prefer what the generator derives over a doc tag. An exception the action throws
 
 ## Describe a response once
 
-The first paragraph of the doc comment of a middleware or an exception class describes every response that class produces:
+The doc comment of a middleware or an exception class describes every response that class produces, by the rule of [Document an operation](#document-an-operation):
 
 ```ts
 /**
@@ -337,7 +337,7 @@ export default class HttpExceptionHandler extends ExceptionHandler {
 3. Else an `instanceof` branch of `renderErrorAsJSON()` gives the body.
 4. Else the exception gets what `handle()` and `renderErrorAsJSON()` send outside their branches with the status of the error, or `errors.body` when the config sets it. It becomes the `Error` schema in `components.schemas`. A handler that overrides neither sends the framework's `{ message: string }`.
 
-The `401` of a secured route is the response of `E_UNAUTHORIZED_ACCESS` from `@adonisjs/auth`, resolved in the same order: a branch of `handle()` for it gives the body. Without one, the body is the `{ errors: [{ message }] }` its own `handle()` sends a client that accepts JSON, which the generator knows although the package does not declare it.
+The `401` of a secured route is the response of `E_UNAUTHORIZED_ACCESS` from `@adonisjs/auth`, resolved in the [order above](#error-bodies): a branch of `handle()` for it gives the body. Without one, the body is the `{ errors: [{ message }] }` its own `handle()` sends a client that accepts JSON, which the generator knows although the package does not declare it.
 
 ## Middleware responses
 
@@ -652,7 +652,7 @@ To check that the `@response {N} reason` doc tags only describe, delete them all
 
 ### 5. Move repeated reasons to their class
 
-A reason copied into many actions, such as the `400` of a tenant middleware, belongs to the middleware or exception class it comes from. Write it once as the first paragraph of the class's doc comment, and delete the copies. See [Describe a response once](#describe-a-response-once). Keep a reason on the action only when it says something specific to that action.
+A reason copied into many actions, such as the `400` of a tenant middleware, belongs to the middleware or exception class it comes from. Write it once in the class's doc comment, and delete the copies. See [Describe a response once](#describe-a-response-once). Keep a reason on the action only when it says something specific to that action.
 
 ### 6. Tag every operation
 

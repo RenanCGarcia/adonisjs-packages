@@ -110,6 +110,11 @@ test.group('openapi:generate on an app whose tags are wrong', group => {
     )
   })
 
+  test('reads @exception as the alias of @throws', ({ assert }) => {
+    assert.include(output, 'OA-T001 broken.aliased: @throws: 404 names a status code')
+    assert.notInclude(output, 'OA-T008 broken.aliased')
+  })
+
   test('warns about a tag the generator does not read', ({ assert }) => {
     // The route has an optional param, so two paths, and the warning once.
     assert.lengthOf(

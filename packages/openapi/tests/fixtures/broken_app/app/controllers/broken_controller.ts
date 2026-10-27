@@ -20,6 +20,13 @@ export default class BrokenController {
   }
 
   /**
+   * @exception {404} Not found
+   */
+  async aliased() {
+    return { ok: true }
+  }
+
+  /**
    * @throws {PlanLimitException | MaintenanceException}
    */
   async union() {
