@@ -47,7 +47,6 @@ const readThrows: TagReader = (context, tag, { throws }) => {
 
 const TAG_READERS = new Map<string, TagReader>([
   ['throws', readThrows],
-  ['exception', readThrows],
   [
     'response',
     (context, tag, { responses }) => {
