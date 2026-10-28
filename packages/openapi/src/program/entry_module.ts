@@ -59,9 +59,12 @@ export function renderEntry(
   errorBody: string | undefined,
   configFile: string | undefined,
 ) {
+  // An import specifier takes `/`: a Windows `\` would read as an escape in the string literal.
+  const specifier = (file: string) => relative(join(entryFile, '..'), file).replaceAll('\\', '/')
+
   const toRelative = (expression: string) =>
     expression.replace(/import\('(app\/[^']+?)(\.ts)?'\)/g, (_, path: string) => {
-      const target = relative(join(entryFile, '..'), join(appRoot, path))
+      const target = specifier(join(appRoot, path))
 
       return `import('${target}.js')`
     })
@@ -101,7 +104,7 @@ export function renderEntry(
     `export type ${NAMES.errorBody} = ${errorBody ? toRelative(errorBody) : '{ message: string }'}`,
     `export type ${NAMES.authErrorBody} = { errors: { message: string }[] }`,
     configFile
-      ? `export type ${NAMES.config} = typeof import('${relative(join(entryFile, '..'), configFile).replace(/\.ts$/, '.js')}').default`
+      ? `export type ${NAMES.config} = typeof import('${specifier(configFile).replace(/\.ts$/, '.js')}').default`
       : '',
     augmentation,
     `export interface Routes {\n${members.join('\n')}\n}`,

@@ -30,7 +30,8 @@ function sourceMapOf({ url, sourceMapURL }: Script): SourceMapPayload | undefine
 }
 
 function toPath(url: string) {
-  return url.startsWith('file:') ? fileURLToPath(url) : undefined
+  // `/` like the TypeScript file names the location is compared with, on Windows too.
+  return url.startsWith('file:') ? fileURLToPath(url).replaceAll('\\', '/') : undefined
 }
 
 function original(script: Script, line: number, column: number): FunctionLocation | undefined {

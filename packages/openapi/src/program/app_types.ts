@@ -56,7 +56,8 @@ export function readApp(
   errors: ErrorsConfig,
   configFile?: string,
 ): AppTypes {
-  const entryFile = join(appRoot, '.adonisjs/openapi/routes.ts')
+  // TypeScript names files with `/`, and the compiler host matches this one by string.
+  const entryFile = join(appRoot, '.adonisjs/openapi/routes.ts').replaceAll('\\', '/')
 
   const source = renderEntry(
     entryFile,
