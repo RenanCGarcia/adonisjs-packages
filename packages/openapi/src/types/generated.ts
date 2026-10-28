@@ -40,9 +40,9 @@ export type ResponseSource = (
  * - `OA-T007`: a `@requestBody` or `@response` type that does not resolve, an error for `@response`.
  * - `OA-T008`: a tag the generator does not read.
  * - `OA-T009`: an `@example {N}` whose value or status cannot be read.
- * - `OA-E001`: an `errors` entry whose exception status cannot be read from its source.
+ * - `OA-E001`: an `errors` entry whose exception status cannot be read from its source, or a spread in one that the generator cannot read.
  * - `OA-E002`: a package exception that renders its own body, which its declaration does not carry.
- * - `OA-E003`: an `errors.throwers` or `errors.middleware` key that matches nothing in the documented routes.
+ * - `OA-E003`: an `errors.throwers` or `errors.middleware` key that matches nothing in the documented routes, or is an empty array.
  * - `OA-S001`: an operation without tags.
  * - `OA-S002`: a tag that `document.tags` does not declare.
  * - `OA-S003`: a summary longer than `rules.summaryMaxLength`.

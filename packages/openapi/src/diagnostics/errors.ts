@@ -7,13 +7,28 @@ export function entryStatusUnreadable(
   key: string,
   name: string,
   location?: SourceLocation,
+  index?: number,
 ): Diagnostic {
   return {
     code: 'OA-E001',
     severity: 'warning',
-    message: `errors.${kind}['${key}']: the status of ${name} cannot be read, the entry is ignored`,
+    message: `errors.${kind}['${key}']${index === undefined ? '' : `[${index}]`}: the status of ${name} cannot be read, the entry is ignored`,
     fix: 'name an exception class with a numeric `status` field or `static status`',
     ...(location && { location }),
+  }
+}
+
+export function spreadUnreadable(
+  kind: ErrorsKind,
+  key: string,
+  location: SourceLocation,
+): Diagnostic {
+  return {
+    code: 'OA-E001',
+    severity: 'warning',
+    message: `errors.${kind}['${key}'] spreads an array the generator cannot read, the classes it adds are ignored`,
+    fix: 'spread an array literal or a const that holds one, or write the classes in the entry',
+    location,
   }
 }
 
@@ -36,6 +51,16 @@ export function unknownPresetKey(
     severity: 'warning',
     message: `errors.${kind}['${key}'] is false but names no preset of a first-party package`,
     fix: 'name the preset key to turn off, such as `bouncer.authorize` or `limiter.define`',
+    ...(location && { location }),
+  }
+}
+
+export function emptyEntry(kind: ErrorsKind, key: string, location?: SourceLocation): Diagnostic {
+  return {
+    code: 'OA-E003',
+    severity: 'warning',
+    message: `errors.${kind}['${key}'] is an empty array, which documents nothing and turns off the preset of that key`,
+    fix: 'name the exception classes, or use `false` to turn the preset off',
     ...(location && { location }),
   }
 }

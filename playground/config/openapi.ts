@@ -34,7 +34,7 @@ export default defineConfig({
     throwers: {
       'bouncer.authorize': bouncerErrors.E_AUTHORIZATION_FAILURE,
       'findOrFail': lucidErrors.E_ROW_NOT_FOUND,
-      'ally.user': allyErrors.E_OAUTH_STATE_MISMATCH,
+      'ally.user': [allyErrors.E_OAUTH_STATE_MISMATCH, allyErrors.E_OAUTH_MISSING_CODE],
     },
     middleware: {
       globalThrottle: limiterErrors.E_TOO_MANY_REQUESTS,

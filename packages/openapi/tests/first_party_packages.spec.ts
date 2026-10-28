@@ -37,4 +37,14 @@ test.group('openapi:generate on the playground app: session, shield, ally and i1
     )
     assert.notInclude(logs, 'OA-E002')
   })
+
+  test('documents each exception of ally.user: the 400 of a bad state and the 500 of a missing code', ({
+    assert,
+  }) => {
+    assert.sameMembers(Object.keys(document.paths['/oauth/github/callback']!.get!.responses), [
+      '200',
+      '400',
+      '500',
+    ])
+  })
 })

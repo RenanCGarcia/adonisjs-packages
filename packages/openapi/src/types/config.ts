@@ -99,15 +99,16 @@ export interface ErrorsConfig {
   /**
    * The exception a call throws inside a package, by the method that throws it: `findOrFail`
    * matches any call of that method, `bouncer.authorize` a call on `bouncer`, also through
-   * `bouncer.with(Policy)`. A key replaces the preset of a first-party package with that key, and
-   * `false` turns it off.
+   * `bouncer.with(Policy)`. A call that throws several exceptions takes an array of classes, each
+   * documented with its own response. A key replaces the preset of a first-party package with that
+   * key, and `false` turns it off.
    */
-  throwers?: Record<string, ExceptionClass | false>
+  throwers?: Record<string, ExceptionClass | readonly ExceptionClass[] | false>
   /**
    * The exception a middleware throws inside a package, by its name as `node ace list:routes`
    * shows it, such as `auth` or the `globalThrottle` of `limiter.define('global')`, or by its
    * kernel specifier. `limiter.define` replaces the preset for every throttle, and `false` turns a
    * preset off.
    */
-  middleware?: Record<string, ExceptionClass | false>
+  middleware?: Record<string, ExceptionClass | readonly ExceptionClass[] | false>
 }

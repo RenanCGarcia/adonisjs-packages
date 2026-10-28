@@ -4,7 +4,7 @@ import { aliased } from '../symbols.ts'
 import type { ErrorsKind } from '../../diagnostics/errors.ts'
 
 interface PackagePreset {
-  throwers?: Record<string, string>
+  throwers?: Record<string, string | string[]>
   createdMiddleware?: { key: string; exception: string }
   /**
    * The exceptions whose own `handle()` sends `{ errors: [{ message }] }` to a client that accepts
@@ -28,7 +28,7 @@ const PRESETS = {
     ownBody: ['E_UNAUTHORIZED_ACCESS', 'E_INVALID_CREDENTIALS'],
   },
   '@adonisjs/ally': {
-    throwers: { 'ally.user': 'E_OAUTH_STATE_MISMATCH' },
+    throwers: { 'ally.user': ['E_OAUTH_STATE_MISMATCH', 'E_OAUTH_MISSING_CODE'] },
     ownBody: [
       'E_OAUTH_MISSING_CODE',
       'E_OAUTH_STATE_MISMATCH',
@@ -106,11 +106,12 @@ export function packagePresets(resolution: Resolution, ownBody: ts.Type) {
 
     if (!resolved) continue
 
-    for (const [key, exported] of Object.entries(preset.throwers ?? {})) {
-      const exception = resolved.exception(exported)
+    for (const [key, exported] of Object.entries(preset.throwers ?? {}))
+      for (const className of [exported].flat()) {
+        const exception = resolved.exception(className)
 
-      if (exception) presets.push({ kind: 'throwers', key, package: name, exception })
-    }
+        if (exception) presets.push({ kind: 'throwers', key, package: name, exception })
+      }
 
     const created =
       preset.createdMiddleware && resolved.exception(preset.createdMiddleware.exception)
