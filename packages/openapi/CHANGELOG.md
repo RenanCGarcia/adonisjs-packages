@@ -1,5 +1,33 @@
 # @enzopita/adonisjs-openapi
 
+## 1.2.0
+
+### Minor Changes
+
+- [#66](https://github.com/enzopita/adonisjs-packages/pull/66) [`a4c566a`](https://github.com/enzopita/adonisjs-packages/commit/a4c566a396537e91bc8407e10138eb7a73470b66) Thanks [@enzopita](https://github.com/enzopita)! - Document the `redirect()` of an `@adonisjs/ally` driver as a `302` with a `Location` header, and give Ally's exceptions the `{ errors: [{ message }] }` body their own `handle()` sends. The README lists what Shield's CSRF guard, form bodies and Ally's `any` fields leave out of the document.
+
+- [#70](https://github.com/enzopita/adonisjs-packages/pull/70) [`9d315de`](https://github.com/enzopita/adonisjs-packages/commit/9d315de9a7661a6b52274995454cadaaf7c3bc99) Thanks [@enzopita](https://github.com/enzopita)! - List a validated request body under one media type for each parser of the app's bodyparser: `application/json`, `application/x-www-form-urlencoded` and `multipart/form-data`, or the parser's first configured type. The media types reference one schema in `components.schemas`. The generator reads the parser types and `allowedMethods` from `config/bodyparser.ts`, and uses the bodyparser defaults for a setting it cannot read. A body with a file field is listed only under the multipart type. On a method missing from `allowedMethods`, the validator fields become query parameters.
+
+- [#68](https://github.com/enzopita/adonisjs-packages/pull/68) [`044edcd`](https://github.com/enzopita/adonisjs-packages/commit/044edcd264c232a0be4f16b24d87d1a608e3aaa9) Thanks [@enzopita](https://github.com/enzopita)! - Document what the installed first-party packages throw without an `errors` entry: the `401` of `@adonisjs/auth` calls, the `400` of `verifyCredentials` and of `ally.user`, the `403` of `bouncer.authorize`, the `404` of Lucid's `findOrFail`, `findByOrFail` and `firstOrFail`, and the `429` of `limiter.consume` and of every throttle `limiter.define()` creates. An `errors` key replaces a preset, `false` turns it off (a `false` key that names no preset gets `OA-E003`), and `--explain` names the package.
+
+- [#71](https://github.com/enzopita/adonisjs-packages/pull/71) [`9c712a7`](https://github.com/enzopita/adonisjs-packages/commit/9c712a7b0f3089783293fc420d80844bcd8fec13) Thanks [@enzopita](https://github.com/enzopita)! - Accept an array of exception classes as an `errors.throwers` or `errors.middleware` value, and document one response per class. The `ally.user` preset now documents the `500` of `E_OAUTH_MISSING_CODE` next to the `400` of `E_OAUTH_STATE_MISMATCH`. An `OA-E001` for an array names the item. The value type accepts a `readonly` array, so `as const` typechecks, and a spread of an array literal or const adds its classes. A spread the generator cannot read gets an `OA-E001` on its own.
+
+  A const that holds the array is followed to its initializer, and an empty array gets `OA-E003`.
+
+### Patch Changes
+
+- [#62](https://github.com/enzopita/adonisjs-packages/pull/62) [`76bc516`](https://github.com/enzopita/adonisjs-packages/commit/76bc516134e84fae8ffdbb47b78eafcc682aa830) Thanks [@enzopita](https://github.com/enzopita)! - `components.schemas.ErrorCode` now lists a literal `code` that an error body reaches through a `$ref` to `components.schemas`, or through nested `oneOf` and `anyOf` entries. It used to read only inline bodies and their top-level `oneOf`.
+
+- [#55](https://github.com/enzopita/adonisjs-packages/pull/55) [`99a010e`](https://github.com/enzopita/adonisjs-packages/commit/99a010e39d798e8b5a36e7a6db6af98891505913) Thanks [@enzopita](https://github.com/enzopita)! - `@exception` is no longer read as `@throws`. It now gets `OA-T008 ... use @throws {Class}`, as the README documents, and no response is documented from it. Under `strict` this warning fails the generation.
+
+- [#64](https://github.com/enzopita/adonisjs-packages/pull/64) [`8d70c87`](https://github.com/enzopita/adonisjs-packages/commit/8d70c87e59f203e95cd54c546664d70769ccb165) Thanks [@enzopita](https://github.com/enzopita)! - Document the `401` that `auth.getUserOrFail()` throws in an app with `@adonisjs/auth`, also on a route without the `auth` middleware.
+
+- [#63](https://github.com/enzopita/adonisjs-packages/pull/63) [`4999f93`](https://github.com/enzopita/adonisjs-packages/commit/4999f9329d7d8f1990eb9e1f8f7f41e3cf982e7d) Thanks [@enzopita](https://github.com/enzopita)! - A failure while locating the functions passed to `.use()` no longer hides its cause. Generation still succeeds, and reports `OA-R005` once with the error message, instead of leaving only `OA-R003` on the functions the lookup could not place. An unreadable source map fails only the functions of its script: the functions of other scripts are still located, and the diagnostic names the first error and how many more there were.
+
+- [#69](https://github.com/enzopita/adonisjs-packages/pull/69) [`ef354d1`](https://github.com/enzopita/adonisjs-packages/commit/ef354d17891ce4310ab1971c6587ca05c3fdd955) Thanks [@enzopita](https://github.com/enzopita)! - `OA-R005` now says what to do: run the app with readable source maps and the inspector available, or register the middleware as a named middleware. Its "and N more" counts distinct errors instead of functions, so one bad source map shared by two functions counts once.
+
+- [#72](https://github.com/enzopita/adonisjs-packages/pull/72) [`c67e1f3`](https://github.com/enzopita/adonisjs-packages/commit/c67e1f3febe0007f45f5137bb09adc5c97ca4967) Thanks [@enzopita](https://github.com/enzopita)! - Document a class written between two unreadable spreads in an `errors` array, such as `P409` in `[P401, ...f(), P409, ...g(), P422]`. It was dropped without a warning. An `OA-E001` for such a class names its index in the source.
+
 ## 1.1.0
 
 ### Minor Changes
