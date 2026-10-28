@@ -97,7 +97,15 @@ export function readApp(
     unauthorized.packaged,
   )
 
-  const configured = new ConfiguredErrors(checker, errors, types.config, exceptions, locate)
+  const configured = new ConfiguredErrors(
+    checker,
+    errors,
+    types.config,
+    exceptions,
+    locate,
+    unauthorized.exception,
+  )
+
   const transformers = transformerTypes(checker, program.getSourceFile(dataFile))
   const named = new Map(transformers.map(([type, name]) => [type, name]))
 

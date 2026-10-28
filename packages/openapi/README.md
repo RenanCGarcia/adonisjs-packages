@@ -173,6 +173,8 @@ The generator follows `throw new X()` in the app's code. It does not read packag
 - `errors.middleware` names the exception a middleware throws inside a package. The key is the middleware's name as `node ace list:routes` shows it: a named middleware, such as `auth`, or the name of a function middleware, such as the `globalThrottle` that `limiter.define('global', ...)` returns. It can also be a specifier in `start/kernel.ts`. The generator matches names and loads no module to do it.
 - `errors.body` is the body of an error the exception handler renders without a branch for its class, as a type expression such as `"import('#types/api').ApiError"`. Without it, that body is read from the exception handler, see [Error bodies](#error-bodies).
 
+An app with `@adonisjs/auth` gets the `401` of `auth.getUserOrFail()` without a `throwers` entry, since every guard throws `E_UNAUTHORIZED_ACCESS` from it. An `auth.getUserOrFail` key replaces it.
+
 A `throwers` or `middleware` key that matches nothing in the documented routes, such as a misspelled `bouncer.authorise`, gets `OA-E003`. An entry's status is read from the source of its class, which the generator never runs: a numeric `status` field, `static status`, the `status` its constructor sets, or the one of a class it extends. A package class is read from its JavaScript, since its declaration file only says `status: number`. An entry whose status cannot be read gets `OA-E001` and is ignored.
 
 A thrower key matches every call of that method. A `findOrFail()` on a row that a foreign key or a validator guarantees still documents its `404`. The response is true, because a concurrent delete can send it, and `@response` cannot remove it. Remove the key to drop it from every route.

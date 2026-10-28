@@ -36,6 +36,15 @@ test.group('openapi:generate on the playground app: what a handler returns and s
     assert.notProperty(document.paths['/api/v1/auth/login']!.post!.responses, '401')
   })
 
+  test('adds the 401 of auth.getUserOrFail() to a route without the auth middleware', ({
+    assert,
+  }) => {
+    assert.deepEqual(
+      json(probe('card').responses['401']),
+      object({ errors: { type: 'array', items: object({ message: { type: 'string' } }) } }),
+    )
+  })
+
   test('merges the branches that answer with one status code', ({ assert }) => {
     const responses = probe('branches').responses
 

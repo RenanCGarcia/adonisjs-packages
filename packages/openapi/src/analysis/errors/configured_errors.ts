@@ -1,5 +1,5 @@
 import ts from 'typescript'
-import { exceptionType } from '../exceptions/exception_class.ts'
+import { exceptionType, type ExceptionType } from '../exceptions/exception_class.ts'
 import { declaredStatus } from '../exceptions/exception_status.ts'
 import type { ExceptionResponses } from '../exceptions/exception_responses.ts'
 import type { Thrown } from '../exceptions/own_response.ts'
@@ -29,6 +29,7 @@ export class ConfiguredErrors {
   #errors: ErrorsConfig
   #config?: ts.Type
   #exceptions: ExceptionResponses
+  #unauthorized?: ExceptionType
   #location: (node: ts.Node) => SourceLocation
   #entries = new Map<ErrorsKind, ConfiguredException[]>()
   #matched = new Set<string>()
@@ -40,12 +41,31 @@ export class ConfiguredErrors {
     config: ts.Type | undefined,
     exceptions: ExceptionResponses,
     location: (node: ts.Node) => SourceLocation,
+    unauthorized?: ExceptionType,
   ) {
     this.#checker = checker
     this.#errors = errors
     this.#config = config
     this.#exceptions = exceptions
     this.#location = location
+    this.#unauthorized = unauthorized
+  }
+
+  // `auth.getUserOrFail()` throws `E_UNAUTHORIZED_ACCESS` in every guard of `@adonisjs/auth`.
+  #builtinThrowers(): ConfiguredException[] {
+    const key = 'auth.getUserOrFail'
+    const exception = this.#unauthorized
+
+    if (!exception || this.#errors.throwers?.[key]) return []
+
+    return [
+      {
+        key,
+        name: exception.name,
+        responses: this.#exceptions.responses(exception, '401'),
+        owner: exception.symbol,
+      },
+    ]
   }
 
   #entriesOf(kind: ErrorsKind) {
@@ -106,7 +126,7 @@ export class ConfiguredErrors {
   }
 
   throwerResponses(invoked: ts.CallExpression[]) {
-    return this.#entriesOf('throwers').flatMap(entry =>
+    return [...this.#entriesOf('throwers'), ...this.#builtinThrowers()].flatMap(entry =>
       invoked
         .filter(call => callMatches(call, entry.key))
         .flatMap(call => {
