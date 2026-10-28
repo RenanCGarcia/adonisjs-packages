@@ -1,3 +1,4 @@
+import { errors as allyErrors } from '@adonisjs/ally'
 import { errors as lucidErrors } from '@adonisjs/lucid'
 import { errors as bouncerErrors } from '@adonisjs/bouncer'
 import { errors as limiterErrors } from '@adonisjs/limiter'
@@ -13,6 +14,9 @@ export default defineConfig({
       { name: 'Users', description: 'Public user profiles' },
       { name: 'Directory', description: 'Listings of many users' },
       { name: 'Webhooks', description: 'Events other services post' },
+      { name: 'Session', description: 'State kept in the session cookie' },
+      { name: 'Forms', description: 'Form posts behind CSRF' },
+      { name: 'OAuth', description: 'Social login with Ally' },
       { name: 'Probe', description: 'Handler patterns the generator documents' },
     ],
   },
@@ -30,6 +34,7 @@ export default defineConfig({
     throwers: {
       'bouncer.authorize': bouncerErrors.E_AUTHORIZATION_FAILURE,
       'findOrFail': lucidErrors.E_ROW_NOT_FOUND,
+      'ally.user': allyErrors.E_OAUTH_STATE_MISMATCH,
     },
     middleware: {
       globalThrottle: limiterErrors.E_TOO_MANY_REQUESTS,

@@ -676,6 +676,114 @@
         }
       }
     },
+    "/api/v1/cart": {
+      "get": {
+        "operationId": "cart.show",
+        "summary": "Show the cart",
+        "description": "Returns the items kept in the session and the message the last request flashed.",
+        "tags": [
+          "Session"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "success": {
+                      "type": "string"
+                    }
+                  },
+                  "additionalProperties": false,
+                  "required": [
+                    "items"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "cart.store",
+        "summary": "Add an item to the cart",
+        "tags": [
+          "Session"
+        ],
+        "responses": {
+          "302": {
+            "description": "Found",
+            "headers": {
+              "Location": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/forms/posts": {
+      "post": {
+        "operationId": "forms.posts",
+        "summary": "Create a post from a form",
+        "description": "The form sends its CSRF token in the `_csrf` field or the `X-CSRF-TOKEN` header. The\nvalidation messages are in the locale of `Accept-Language`.",
+        "tags": [
+          "Forms"
+        ],
+        "responses": {
+          "302": {
+            "description": "Found",
+            "headers": {
+              "Location": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "title": {
+                    "type": "string",
+                    "minLength": 3
+                  }
+                },
+                "additionalProperties": false,
+                "required": [
+                  "title"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/probe/branches": {
       "get": {
         "operationId": "probe.probe.branches",
@@ -2464,6 +2572,88 @@
           }
         }
       }
+    },
+    "/oauth/github/redirect": {
+      "get": {
+        "operationId": "github.redirect",
+        "summary": "Redirect to GitHub",
+        "tags": [
+          "OAuth"
+        ],
+        "responses": {
+          "302": {
+            "description": "Found",
+            "headers": {
+              "Location": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/oauth/github/callback": {
+      "get": {
+        "operationId": "github.callback",
+        "summary": "Handle the GitHub callback",
+        "tags": [
+          "OAuth"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "email": {},
+                    "name": {}
+                  },
+                  "additionalProperties": false,
+                  "required": [
+                    "email",
+                    "name"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "errors": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "message": {
+                            "type": "string"
+                          }
+                        },
+                        "additionalProperties": false,
+                        "required": [
+                          "message"
+                        ]
+                      }
+                    }
+                  },
+                  "additionalProperties": false,
+                  "required": [
+                    "errors"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -2743,6 +2933,18 @@
     {
       "name": "Webhooks",
       "description": "Events other services post"
+    },
+    {
+      "name": "Session",
+      "description": "State kept in the session cookie"
+    },
+    {
+      "name": "Forms",
+      "description": "Form posts behind CSRF"
+    },
+    {
+      "name": "OAuth",
+      "description": "Social login with Ally"
     },
     {
       "name": "Probe",

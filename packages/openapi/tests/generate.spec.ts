@@ -24,6 +24,10 @@ test.group('openapi:generate on the playground app: the document', group => {
       '/api/v1/users',
       '/api/v1/users/{id}',
       '/api/v1/webhooks/mail',
+      '/api/v1/cart',
+      '/api/v1/forms/posts',
+      '/oauth/github/redirect',
+      '/oauth/github/callback',
       '/api/v1/probe/branches',
       '/api/v1/probe/empty',
       '/api/v1/probe/maybe',
@@ -242,7 +246,7 @@ test.group('openapi:generate on the playground app: the document', group => {
   test('writes the tags from the config', ({ assert }) => {
     assert.deepEqual(
       document.tags?.map(({ name }) => name),
-      ['Auth', 'Account', 'Users', 'Directory', 'Webhooks', 'Probe'],
+      ['Auth', 'Account', 'Users', 'Directory', 'Webhooks', 'Session', 'Forms', 'OAuth', 'Probe'],
     )
   })
 

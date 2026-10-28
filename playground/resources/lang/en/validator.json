@@ -1,0 +1,7 @@
+{
+  "shared": {
+    "messages": {
+      "title.minLength": "The title must have at least {min} characters"
+    }
+  }
+}

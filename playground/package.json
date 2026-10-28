@@ -33,10 +33,12 @@
     "bootstrap": "node scripts/bootstrap.js && node ace codegen"
   },
   "dependencies": {
+    "@adonisjs/ally": "catalog:",
     "@adonisjs/auth": "^10.1.0",
     "@adonisjs/bouncer": "catalog:",
     "@adonisjs/core": "catalog:",
     "@adonisjs/cors": "^3.0.0",
+    "@adonisjs/i18n": "catalog:",
     "@adonisjs/limiter": "catalog:",
     "@adonisjs/lucid": "^22.4.2",
     "@adonisjs/session": "^8.3.0",

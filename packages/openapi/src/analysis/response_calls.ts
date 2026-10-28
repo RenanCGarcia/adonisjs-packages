@@ -35,11 +35,14 @@ export function responseCalls(
       const receiver =
         ts.isPropertyAccessExpression(callee) && checker.getTypeAtLocation(callee.expression)
 
+      const declaration = checker.getResolvedSignature(node)?.declaration
+
       if (receiver && receiver.getSymbol()?.name === 'HttpResponse')
         found.calls.push({ name: callee.name.text, call: node })
+      else if (isAllyRedirect(declaration)) found.calls.push({ name: 'redirect', call: node })
       else {
         found.invoked.push(node)
-        follow(checker.getResolvedSignature(node)?.declaration)
+        follow(declaration)
       }
     }
 
@@ -58,6 +61,26 @@ export function responseCalls(
   for (const root of roots) visit(root)
 
   return found
+}
+
+const allyDrivers = new Set(['Oauth1Driver', 'Oauth2Driver', 'AllyDriverContract'])
+
+/**
+ * The `redirect()` of an `@adonisjs/ally` driver, which calls `response.redirect()` inside the
+ * package. A driver of the app extends one of the package's classes.
+ */
+function isAllyRedirect(declaration: ts.Declaration | undefined) {
+  if (!declaration || !(ts.isMethodDeclaration(declaration) || ts.isMethodSignature(declaration)))
+    return false
+
+  const owner = declaration.parent
+
+  return (
+    declaration.name.getText() === 'redirect' &&
+    (ts.isClassDeclaration(owner) || ts.isInterfaceDeclaration(owner)) &&
+    allyDrivers.has(owner.name?.text ?? '') &&
+    declaration.getSourceFile().fileName.includes('/@adonisjs/ally/')
+  )
 }
 
 export function bodyOf(declaration: ts.Declaration) {

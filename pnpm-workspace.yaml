@@ -5,9 +5,11 @@ packages:
 catalogMode: strict
 
 catalog:
+  '@adonisjs/ally': ^6.3.2
   '@adonisjs/assembler': ^8.6.0
   '@adonisjs/bouncer': ^4.0.1
   '@adonisjs/core': ^7.6.0
+  '@adonisjs/i18n': ^3.0.1
   '@adonisjs/limiter': ^3.0.1
   '@adonisjs/tsconfig': ^2.0.0
   '@japa/assert': ^4.2.0

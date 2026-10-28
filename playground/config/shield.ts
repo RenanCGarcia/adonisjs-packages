@@ -1,5 +1,7 @@
 import { defineConfig } from '@adonisjs/shield'
 
+const formRoutes = new Set(['forms.posts'])
+
 const shieldConfig = defineConfig({
   /**
    * Configure CSP policies for your app. Refer documentation
@@ -30,13 +32,13 @@ const shieldConfig = defineConfig({
     /**
      * Enable CSRF token verification for state-changing requests.
      */
-    enabled: false,
+    enabled: true,
 
     /**
      * Route patterns to exclude from CSRF checks.
      * Useful for external webhooks or API endpoints.
      */
-    exceptRoutes: [],
+    exceptRoutes: ({ route }) => !formRoutes.has(route?.name ?? ''),
 
     /**
      * Expose an encrypted XSRF-TOKEN cookie for frontend HTTP clients.

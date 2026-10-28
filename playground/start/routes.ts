@@ -50,6 +50,15 @@ router
 
     router
       .group(() => {
+        router.get('/', [controllers.Cart, 'show'])
+        router.post('/', [controllers.Cart, 'store'])
+      })
+      .prefix('cart')
+
+    router.post('forms/posts', [controllers.Posts, 'store']).as('forms.posts')
+
+    router
+      .group(() => {
         router.get('branches', [controllers.Probe, 'branches'])
         router.get('empty', [controllers.Probe, 'empty'])
         router.get('maybe', [controllers.Probe, 'maybe'])
@@ -117,5 +126,12 @@ router
       .as('probe')
   })
   .prefix('/api/v1')
+
+router
+  .group(() => {
+    router.get('redirect', [controllers.Github, 'redirect'])
+    router.get('callback', [controllers.Github, 'callback'])
+  })
+  .prefix('oauth/github')
 
 openapiRoutes().use(middleware.auth({ guards: ['basic'] }))

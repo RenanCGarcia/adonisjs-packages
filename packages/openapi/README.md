@@ -341,6 +341,8 @@ export default class HttpExceptionHandler extends ExceptionHandler {
 
 The `401` of a secured route is the response of `E_UNAUTHORIZED_ACCESS` from `@adonisjs/auth`, resolved in the [order above](#error-bodies): a branch of `handle()` for it gives the body. Without one, the body is the `{ errors: [{ message }] }` its own `handle()` sends a client that accepts JSON, which the generator knows although the package does not declare it.
 
+The exceptions of `@adonisjs/ally`, such as `E_OAUTH_STATE_MISMATCH`, get the same `{ errors: [{ message }] }` body without a branch. Name the call that throws one in `errors.throwers`, such as `'ally.user': allyErrors.E_OAUTH_STATE_MISMATCH`.
+
 ## Middleware responses
 
 A middleware that ends the request documents its response on every route it runs on: the named middleware a route uses, the ones `router.use()` and `server.use()` register in `start/kernel.ts`, and a function passed to the route's `.use()`. Its `handle()`, or the function, is read like an exception's, so `response.forbidden(body)` or `response.status(403).send(body)` adds a `403` with that body. An exception it throws, such as `throw new TwoFactorRequiredException()`, adds the response of that class, and `response.abort()` and `response.redirect()` add theirs. Middleware from packages are not read: name what they throw in `errors.middleware`.
@@ -377,6 +379,7 @@ A response comes from each status code the handler can answer with. Branches tha
 - A helper or `response.send(body)` called without `return` counts too, since the handler's own response calls are read along with its return type.
 - `return null` is a `204` with no body. When the return type also includes `undefined`, the description says the response can have no body.
 - `response.redirect(...)` is a `302`, or the status passed to it, with a `Location` header.
+- The `redirect()` of an `@adonisjs/ally` driver, such as `ally.use('github').redirect()`, is a `302` with a `Location` header, as `response.redirect()` is.
 - `response.abort(body, 403)`, `abortIf()` and `abortUnless()` add their status with that body, or `400` without a status.
 - `204`, `205` and `304` responses, and helpers called without a body, have no `content`.
 - The exceptions the handler throws, its middleware, `@throws` and `@response {N} {Type}`, its validator (`422`) and its security middleware (`401`) add statuses too. See [Exception responses](#exception-responses), [Middleware responses](#middleware-responses), [Document an operation](#document-an-operation) and [Security](#security).
@@ -690,3 +693,7 @@ Known cases where the document differs from what the app sends, or where the gen
 - `download()` and `attachment()` with a path built at runtime, such as `app.makePath('report.pdf')`, are documented as `application/octet-stream`. The app sends the media type of the file's extension, which the generator cannot read from the source. Write the path as a literal that ends with the extension to document its media type.
 - A thrower key matches every call of its method, so a `findOrFail()` that cannot fail still documents its `404`. See [Errors config](#errors-config).
 - The paginator `metadata` fields are typed `string` by Lucid's `SimplePaginatorMetaKeys`, so they are documented as strings. The app sends numbers and `null`. Fix the type in the app's serializer.
+- Shield's CSRF guard runs on every route of the router stack, and its `exceptRoutes` is evaluated at runtime, so the generator does not document it. A rejected token redirects back with a `302`, although `E_BAD_CSRF_TOKEN` declares `403`, so do not name it in `errors.middleware`. Describe the redirect in the operation's description.
+- A validated body is documented as `application/json`. The bodyparser also accepts `application/x-www-form-urlencoded`, which an HTML form sends.
+- A thrower key names one class. `ally.use('github').user()` also throws `E_OAUTH_MISSING_CODE` (`500`) when the callback has no `code`, which `'ally.user'` cannot document next to `E_OAUTH_STATE_MISMATCH` ([#65](https://github.com/enzopita/adonisjs-packages/issues/65)).
+- A package that declares a field `any`, such as the `email` and `name` of the user that Ally's GitHub driver returns, documents it as `{}`. Type the value in the app, such as `githubUser.email as string | null`.
