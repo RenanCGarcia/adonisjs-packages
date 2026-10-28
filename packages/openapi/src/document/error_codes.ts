@@ -16,13 +16,31 @@ function isResponse(response: OpenApiResponse | OpenApiReference): response is O
   return !('$ref' in response)
 }
 
-function* bodies(response: OpenApiResponse) {
-  for (const { schema } of Object.values(response.content ?? {}))
-    if (schema) yield* schema.oneOf ?? [schema]
-}
+const SCHEMA_REF = '#/components/schemas/'
 
 export function errorCodes(document: Pick<OpenApiDocument, 'paths' | 'components'>) {
   const codes = new Set<string>()
+  const seen = new Set<string>()
+
+  function collect(schema: JsonSchema) {
+    if (schema.$ref?.startsWith(SCHEMA_REF)) {
+      const name = schema.$ref.slice(SCHEMA_REF.length)
+      const target = document.components.schemas[name]
+
+      if (target && !seen.has(name)) {
+        seen.add(name)
+        collect(target)
+      }
+
+      return
+    }
+
+    const code = literalCode(schema)
+
+    if (code) codes.add(code)
+
+    for (const entry of [...(schema.oneOf ?? []), ...(schema.anyOf ?? [])]) collect(entry)
+  }
 
   const responses = [
     ...Object.values(document.paths).flatMap(methods =>
@@ -37,11 +55,7 @@ export function errorCodes(document: Pick<OpenApiDocument, 'paths' | 'components
   ]
 
   for (const response of responses)
-    for (const body of bodies(response)) {
-      const code = literalCode(body)
-
-      if (code) codes.add(code)
-    }
+    for (const { schema } of Object.values(response.content ?? {})) if (schema) collect(schema)
 
   return [...codes].sort()
 }
