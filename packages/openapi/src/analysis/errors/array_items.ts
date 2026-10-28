@@ -46,17 +46,27 @@ function elementsOf(
   })
 }
 
-function alignItems(elements: ts.Expression[], count: number) {
+interface WrittenItem {
+  element: ts.Expression
+  index: number
+  runtimeIndex?: number
+}
+
+function writtenItems(elements: ts.Expression[], count: number): WrittenItem[] {
   const first = elements.findIndex(ts.isSpreadElement)
+  const tail = first === -1 ? 0 : elements.length - 1 - elements.findLastIndex(ts.isSpreadElement)
 
-  if (first === -1) return elements.slice(0, count)
+  return elements.flatMap((element, index) => {
+    if (ts.isSpreadElement(element)) return []
 
-  const tail = elements.length - 1 - elements.findLastIndex(ts.isSpreadElement)
+    if (first === -1 || index < first)
+      return index < count ? [{ element, index, runtimeIndex: index }] : []
 
-  return Array.from({ length: count }, (_, index) => {
-    if (index < first) return elements[index]
+    const fromEnd = elements.length - index
 
-    return index >= count - tail ? elements[elements.length - (count - index)] : undefined
+    return fromEnd <= tail
+      ? [{ element, index, runtimeIndex: count - fromEnd }]
+      : [{ element, index }]
   })
 }
 
@@ -69,7 +79,7 @@ export function arrayItems(checker: ts.TypeChecker, node: ts.Node | undefined, c
   const elements = elementsOf(checker, literal, seen)
 
   return {
-    items: alignItems(elements, count),
+    items: writtenItems(elements, count),
     unreadable: elements.filter(ts.isSpreadElement),
   }
 }

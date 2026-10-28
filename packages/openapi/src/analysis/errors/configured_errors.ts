@@ -143,22 +143,25 @@ export class ConfiguredErrors {
           for (const spread of read?.unreadable ?? [])
             this.#problems.push(spreadUnreadable(kind, key, this.#location(spread)))
 
-          const items = read?.items
-
-          return value.flatMap((item, index) => {
-            if (items && !items[index]) return []
-
-            const element = items?.[index]
-
-            return this.#entry(
+          const entry = (
+            item: { name: string } | undefined,
+            index: number,
+            element?: ts.Expression,
+          ) =>
+            this.#entry(
               kind,
               key,
-              item.name,
+              item?.name ?? '',
               exceptionType(this.#checker, element && this.#checker.getSymbolAtLocation(element)),
               element ?? declaration,
               index,
             )
-          })
+
+          if (!read) return value.map((item, index) => entry(item, index))
+
+          return read.items.map(({ element, index, runtimeIndex }) =>
+            entry(runtimeIndex === undefined ? undefined : value[runtimeIndex], index, element),
+          )
         }
 
         const exception =

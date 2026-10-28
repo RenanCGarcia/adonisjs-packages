@@ -199,6 +199,27 @@ test.group('openapi:generate with the presets of first-party packages', () => {
     assert.notInclude(output, "errors.throwers['ally.user'][1]")
   })
 
+  test('documents a class written between two unreadable spreads', async ({ assert }) => {
+    const { document, output } = await generateWithErrors(
+      "  errors: { throwers: { 'ally.user': [allyErrors.E_OAUTH_STATE_MISMATCH, ...more(), PlanLimitException, Error, ...other(), MaintenanceException] } },\n",
+      [
+        "import { errors as allyErrors } from '@adonisjs/ally'",
+        "import PlanLimitException from '#exceptions/plan_limit_exception'",
+        "import MaintenanceException from '#exceptions/maintenance_exception'",
+        'function more() { return [allyErrors.E_OAUTH_MISSING_CODE] }',
+        'function other() { return [allyErrors.E_OAUTH_ACCESS_DENIED] }',
+        '',
+      ].join('\n'),
+    )
+
+    assert.properties(document.paths['/oauth/github/callback']!.get!.responses, [
+      '400',
+      '402',
+      '503',
+    ])
+    assert.include(output, "errors.throwers['ally.user'][3]: the status of Error")
+  })
+
   test('warns on an empty array and suggests false', async ({ assert }) => {
     const { output } = await generateWithErrors("  errors: { throwers: { 'ally.user': [] } },\n")
 
