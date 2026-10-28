@@ -272,7 +272,7 @@ An exception class named by `@throws` documents its status code and its body:
 
 `handle()` is read with the functions of the app it calls, such as a shared `renderError(ctx, error)`. Functions from packages are not followed, and only calls on an `HttpResponse` count.
 
-The handler does not need `@throws` for an exception it throws itself: `throw new EmailTakenException(email)` in the handler, or in a function of the app it calls, documents the class's response the same way.
+The handler does not need `@throws` for an exception it throws itself: `throw new EmailTakenException(email)` in the handler, or in a function of the app it calls, documents the class's response the same way. A package class the app throws, such as `throw new errors.E_ROW_NOT_FOUND(User)`, is documented too, with its status read from the package's JavaScript. A vine `E_VALIDATION_ERROR` gets the `ValidationError` body the framework's handler renders for it.
 
 ```ts
 export default class SmsRejectedException extends Exception {
@@ -334,7 +334,7 @@ When several exceptions share a status code, or an exception uses `422` on a rou
 
 The document also gets an `ErrorCode` schema, an enum of every literal `code` (`as const`, or a literal type) an error body carries, so a client can list the codes. A name `ErrorCode` your own types already use is left alone.
 
-A class from a package, such as `E_ROW_NOT_FOUND` from `@adonisjs/lucid`, is thrown inside the package, which the generator does not read. A [package preset](#package-presets) names the call that throws it, or the app names it in `errors.throwers`. Its status is read from the package's JavaScript.
+A class from a package, such as `E_ROW_NOT_FOUND` from `@adonisjs/lucid`, is usually thrown inside the package, which the generator does not read. A [package preset](#package-presets) names the call that throws it, or the app names it in `errors.throwers`. Its status is read from the package's JavaScript.
 
 ## Error bodies
 

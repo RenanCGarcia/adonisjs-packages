@@ -122,6 +122,31 @@ test.group('openapi:generate on the playground app: exceptions, middleware and t
     })
   })
 
+  test('resolves a @throws class that extends a generic app class by name', ({ assert }) => {
+    assert.notInclude(logs, 'OA-T002')
+    assert.deepEqual(probe('frozen').responses['423'], {
+      description: 'The probe is frozen',
+      content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
+    })
+  })
+
+  test('documents a package exception the app throws with throw new', ({ assert }) => {
+    assert.notInclude(logs, 'OA-T003')
+    assert.deepEqual(probe('archived/{id}').responses['404'], {
+      description: 'The user is archived',
+      content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
+    })
+    assert.deepEqual(json(probe('invited', 'post').responses['403']), authorizationFailure)
+  })
+
+  test('documents a vine validation error the app throws with the body the framework renders', ({
+    assert,
+  }) => {
+    assert.deepEqual(json(probe('rejected', 'post').responses['422']), {
+      $ref: '#/components/schemas/ValidationError',
+    })
+  })
+
   test('reads the response helper an exception answers with in its handle()', ({ assert }) => {
     assert.notInclude(logs, '@throws')
     assert.property(document.paths['/api/v1/auth/signup']!.post!.responses, '409')

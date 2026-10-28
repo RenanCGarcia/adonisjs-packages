@@ -8,6 +8,7 @@ import {
   type ExceptionHandlerAnswers,
   type HandlerBranch,
 } from './exception_handler.ts'
+import { declaredStatus } from './exception_status.ts'
 import { exceptionResponse, type Thrown } from './own_response.ts'
 
 function bodiesFor(codes: string[], bodies: ts.Type[]): Thrown[] {
@@ -56,6 +57,11 @@ export class ExceptionResponses {
    * carry, by the symbol of its class.
    */
   #packaged: Map<ts.Symbol, ts.Type[]>
+  /**
+   * Vine's `E_VALIDATION_ERROR`, which the framework's handler renders itself, with the body it sends.
+   */
+  #validation?: { symbol: ts.Symbol; body?: ts.Type }
+  #declared = new Map<ts.Symbol, string | undefined>()
   #undeclared = new Set<string>()
   readonly diagnostics: Diagnostic[] = []
 
@@ -64,11 +70,13 @@ export class ExceptionResponses {
     handler: ExceptionHandlerAnswers,
     generic: ts.Type[],
     packaged: Map<ts.Symbol, ts.Type[]>,
+    validation?: { symbol: ts.Symbol; body?: ts.Type },
   ) {
     this.#checker = checker
     this.#handler = handler
     this.generic = generic
     this.#packaged = packaged
+    this.#validation = validation
   }
 
   /**
@@ -116,7 +124,8 @@ export class ExceptionResponses {
   }
 
   /**
-   * The status is the class default, or `status` for a class a package declares. The body is what
+   * The status is the class default, else `status`, else the one its source declares, which for a
+   * package class only its JavaScript carries. The body is what
    * an `instanceof` branch of the handler's `handle()` sends, else what the exception's own
    * `handle()` sends, else what a branch of `renderErrorAsJSON()` sends, else the generic body: the
    * order the framework's `ExceptionHandler` runs them in.
@@ -125,7 +134,11 @@ export class ExceptionResponses {
     const own = exceptionResponse(this.#checker, exception)
     let codes = [...new Set(own.map(({ code }) => code))]
 
-    if (!codes.length && status) codes = [status]
+    if (!codes.length) {
+      const declared = status ?? this.#declaredStatus(exception)
+
+      if (declared) codes = [declared]
+    }
 
     if (!codes.length) return []
 
@@ -136,6 +149,18 @@ export class ExceptionResponses {
       codes,
       this.#afterFallThrough(exception, codes, own, handled.branch),
     )
+  }
+
+  // Reading a package class parses its JavaScript, and a shared app function throws it on many routes.
+  #declaredStatus(exception: ExceptionType) {
+    const { symbol } = exception
+
+    if (!symbol) return declaredStatus(this.#checker, exception)
+
+    if (!this.#declared.has(symbol))
+      this.#declared.set(symbol, declaredStatus(this.#checker, exception))
+
+    return this.#declared.get(symbol)
   }
 
   #afterFallThrough(
@@ -151,6 +176,10 @@ export class ExceptionResponses {
     if (handle === 'read') return own.length ? own : bodiesFor(codes, [])
 
     if (handle === 'unread') return this.#packagedBody(exception, codes)
+
+    // The framework matches its `code`, so a subclass and vine's exported class render the same.
+    if (this.#validation && lineage(this.#checker, exception.instance).has(this.#validation.symbol))
+      return bodiesFor(codes, this.#validation.body ? [this.#validation.body] : [])
 
     const rendered = this.#branches(this.#handler.rendered, exception)
 
@@ -192,6 +221,7 @@ export function readExceptionResponses(
   handler: ts.Type | undefined,
   errorBody: { type: ts.Type; overridesHandler: boolean },
   packaged: Map<ts.Symbol, ts.Type[]>,
+  validation?: { symbol: ts.Symbol; body?: ts.Type },
 ) {
   const answers = handler
     ? exceptionHandlerAnswers(checker, handler)
@@ -199,5 +229,11 @@ export function readExceptionResponses(
 
   const sent = errorBody.overridesHandler ? [] : answers.generic.flatMap(({ body }) => body ?? [])
 
-  return new ExceptionResponses(checker, answers, sent.length ? sent : [errorBody.type], packaged)
+  return new ExceptionResponses(
+    checker,
+    answers,
+    sent.length ? sent : [errorBody.type],
+    packaged,
+    validation,
+  )
 }

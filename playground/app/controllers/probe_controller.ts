@@ -3,6 +3,8 @@ import { fileURLToPath } from 'node:url'
 import User from '#models/user'
 import { manageProbe } from '#abilities/main'
 import { findUser } from '#services/find_user'
+import InviteMember from '#services/invite_member'
+import { findArchivedUser } from '#services/find_archived_user'
 import ProbePolicy from '#policies/probe_policy'
 import EmailTakenException from '#exceptions/email_taken_exception'
 import PlanLimitException from '#exceptions/plan_limit_exception'
@@ -16,6 +18,7 @@ import {
 } from '#validators/probe'
 import MemberCardTransformer from '#transformers/member_card_transformer'
 import type { HttpContext } from '@adonisjs/core/http'
+import { errors as vineErrors } from '@vinejs/vine'
 
 export const memberCardExample = {
   data: { displayName: 'Jane Doe', initials: 'JD', name: 'Jane Doe', seats: 1 },
@@ -157,6 +160,33 @@ export default class ProbeController {
   async found({ params }: HttpContext) {
     const user = await findUser(Number(params.id))
     return { email: user.email }
+  }
+
+  /**
+   * @response {404} The user is archived
+   */
+  async archived({ params }: HttpContext) {
+    const user = await findArchivedUser(Number(params.id))
+    return { email: user.email }
+  }
+
+  async invited({ request }: HttpContext) {
+    return new InviteMember().handle(request.input('email'))
+  }
+
+  async rejected({ request }: HttpContext) {
+    if (request.input('email')?.endsWith('@guest.test'))
+      throw new vineErrors.E_VALIDATION_ERROR([
+        { field: 'email', message: 'Guests cannot sign up', rule: 'guest' },
+      ])
+    return { accepted: true }
+  }
+
+  /**
+   * @throws {FrozenProbeException} The probe is frozen
+   */
+  async frozen() {
+    return { frozen: false }
   }
 
   async plan({ request }: HttpContext) {

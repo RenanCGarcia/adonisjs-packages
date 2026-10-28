@@ -65,7 +65,10 @@ export function lineage(checker: ts.TypeChecker, instance: ts.Type) {
 
     symbols.add(symbol)
 
-    if (type.isClassOrInterface()) pending.push(...checker.getBaseTypes(type))
+    // `extends Base<'E_X'>` gives a reference to `Base`, which is not a class type itself.
+    const declared = checker.getDeclaredTypeOfSymbol(symbol)
+
+    if (declared.isClassOrInterface()) pending.push(...checker.getBaseTypes(declared))
   }
 
   return symbols

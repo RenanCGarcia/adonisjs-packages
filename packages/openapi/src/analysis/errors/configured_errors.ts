@@ -1,6 +1,5 @@
 import ts from 'typescript'
 import { exceptionType, type ExceptionType } from '../exceptions/exception_class.ts'
-import { declaredStatus } from '../exceptions/exception_status.ts'
 import type { ExceptionResponses } from '../exceptions/exception_responses.ts'
 import type { Thrown } from '../exceptions/own_response.ts'
 import { property } from '../symbols.ts'
@@ -76,10 +75,7 @@ export class ConfiguredErrors {
           owner: preset.exception.symbol,
           preset,
           get responses() {
-            return (responses ??= exceptions.responses(
-              preset.exception,
-              declaredStatus(checker, preset.exception),
-            ))
+            return (responses ??= exceptions.responses(preset.exception))
           },
         },
       ]
@@ -94,12 +90,10 @@ export class ConfiguredErrors {
     declaration: ts.Node | undefined,
     index?: number,
   ): ConfiguredException {
-    const status = exception && declaredStatus(this.#checker, exception)
-
     const entry: ConfiguredException = {
       key,
       name: exception?.name ?? (runtimeName || key),
-      responses: exception ? this.#exceptions.responses(exception, status) : [],
+      responses: exception ? this.#exceptions.responses(exception) : [],
       owner: exception?.symbol,
       ...(declaration && { location: this.#location(declaration) }),
     }
