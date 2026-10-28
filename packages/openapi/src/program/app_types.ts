@@ -1,5 +1,5 @@
 import ts from 'typescript'
-import { join, relative } from 'node:path'
+import { join, relative, sep } from 'node:path'
 import { existsSync } from 'node:fs'
 import { property } from '../analysis/symbols.ts'
 import { ConfiguredErrors } from '../analysis/errors/configured_errors.ts'
@@ -57,7 +57,7 @@ export function readApp(
   configFile?: string,
 ): AppTypes {
   // TypeScript names files with `/`, and the compiler host matches this one by string.
-  const entryFile = join(appRoot, '.adonisjs/openapi/routes.ts').replaceAll('\\', '/')
+  const entryFile = join(appRoot, '.adonisjs/openapi/routes.ts').split(sep).join('/')
 
   const source = renderEntry(
     entryFile,

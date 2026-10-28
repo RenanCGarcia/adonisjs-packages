@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { type Debugger, type Runtime, Session } from 'node:inspector'
 import { SourceMap, type SourceMapPayload } from 'node:module'
+import { sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 /**
@@ -31,7 +32,7 @@ function sourceMapOf({ url, sourceMapURL }: Script): SourceMapPayload | undefine
 
 function toPath(url: string) {
   // `/` like the TypeScript file names the location is compared with, on Windows too.
-  return url.startsWith('file:') ? fileURLToPath(url).replaceAll('\\', '/') : undefined
+  return url.startsWith('file:') ? fileURLToPath(url).split(sep).join('/') : undefined
 }
 
 function original(script: Script, line: number, column: number): FunctionLocation | undefined {

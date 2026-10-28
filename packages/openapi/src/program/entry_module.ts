@@ -1,5 +1,5 @@
 import ts from 'typescript'
-import { join, relative } from 'node:path'
+import { join, relative, sep } from 'node:path'
 import type { RouteOperation } from '../routes/route_operation.ts'
 
 /**
@@ -60,7 +60,7 @@ export function renderEntry(
   configFile: string | undefined,
 ) {
   // An import specifier takes `/`: a Windows `\` would read as an escape in the string literal.
-  const specifier = (file: string) => relative(join(entryFile, '..'), file).replaceAll('\\', '/')
+  const specifier = (file: string) => relative(join(entryFile, '..'), file).split(sep).join('/')
 
   const toRelative = (expression: string) =>
     expression.replace(/import\('(app\/[^']+?)(\.ts)?'\)/g, (_, path: string) => {
