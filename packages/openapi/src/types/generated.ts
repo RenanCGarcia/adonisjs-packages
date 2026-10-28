@@ -29,6 +29,7 @@ export type ResponseSource = (
  * - `OA-R002`: a handler whose return type is unknown.
  * - `OA-R003`: a function passed to `.use()` that no function of the app's sources matches.
  * - `OA-R004`: a function passed to `.use()` that several functions of the app's sources match.
+ * - `OA-R005`: the lookup of the functions passed to `.use()` by their location failed.
  * - `OA-V001`: a validator whose JSON Schema cannot be read.
  * - `OA-T001`: a `@throws` that names a status code or a union instead of one class, or a class without braces.
  * - `OA-T002`: a `@throws` class name that no exception class of the app has, or several have.
@@ -55,6 +56,7 @@ export type DiagnosticCode =
   | 'OA-R002'
   | 'OA-R003'
   | 'OA-R004'
+  | 'OA-R005'
   | 'OA-V001'
   | 'OA-T001'
   | 'OA-T002'

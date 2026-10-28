@@ -1,5 +1,7 @@
 import ts from 'typescript'
 import { isAppSource } from '../analysis/symbols.ts'
+import { inlineLookupFailed } from '../diagnostics/route.ts'
+import type { Diagnostic } from '../types.ts'
 import { type FunctionLocation, locateFunctions } from './function_location.ts'
 import type { RouteOperation } from './route_operation.ts'
 
@@ -211,15 +213,29 @@ export function inlineMiddleware(program: ts.Program, middleware: InlineMiddlewa
 
   let locations: Map<Function, FunctionLocation> | undefined
 
+  const diagnostics: Diagnostic[] = []
+
   const locationOf = (fn: Function) => {
-    locations ??= locateFunctions(
-      middleware.flatMap(({ source, fn }) => (bySource(source).kind === 'missing' ? [fn] : [])),
-    )
+    if (!locations) {
+      const { found, failures } = locateFunctions(
+        middleware.flatMap(({ source, fn }) => (bySource(source).kind === 'missing' ? [fn] : [])),
+      )
+
+      const [first] = failures
+
+      if (first) {
+        const more = failures.length > 1 ? `, and ${failures.length - 1} more` : ''
+
+        diagnostics.push(inlineLookupFailed(`${first.message}${more}`))
+      }
+
+      locations = found
+    }
 
     return locations.get(fn)
   }
 
-  return ({ source, fn }: InlineMiddleware): InlineMatch => {
+  const find = ({ source, fn }: InlineMiddleware): InlineMatch => {
     const match = bySource(source)
 
     if (match.kind !== 'missing') return match
@@ -232,4 +248,6 @@ export function inlineMiddleware(program: ts.Program, middleware: InlineMiddlewa
 
     return body ? { kind: 'found', body } : match
   }
+
+  return { find, diagnostics }
 }

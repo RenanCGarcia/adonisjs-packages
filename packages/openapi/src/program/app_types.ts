@@ -15,7 +15,7 @@ import { controllerHandler, type ControllerHandler } from '../routes/controller_
 import { inlineMiddleware } from '../routes/inline_middleware.ts'
 import { MiddlewareResponses } from '../routes/middleware_responses.ts'
 import { TypeToSchema } from '../schema/type_to_schema.ts'
-import type { ErrorsConfig, SourceLocation } from '../types.ts'
+import type { Diagnostic, ErrorsConfig, SourceLocation } from '../types.ts'
 import type { RouteOperation } from '../routes/route_operation.ts'
 import { createProgram } from './create_program.ts'
 import { readEntry, renderEntry } from './entry_module.ts'
@@ -32,6 +32,7 @@ export interface AppTypes {
   exceptions: ExceptionResponses
   errors: ConfiguredErrors
   validationError?: ts.Type
+  inlineDiagnostics: Diagnostic[]
   tags: Omit<TagContext, 'method' | 'problems'>
   locate: (node: ts.Node) => SourceLocation
   routeTypes: (routeName: string) => { request?: ts.Type; response?: ts.Type }
@@ -119,7 +120,7 @@ export function readApp(
 
   const middleware = new MiddlewareResponses(checker, kernel, instanceOf, exceptions, configured)
 
-  const findInline = inlineMiddleware(
+  const inline = inlineMiddleware(
     program,
     routes.flatMap(route => route.inlineMiddleware),
   )
@@ -130,6 +131,7 @@ export function readApp(
     exceptions,
     errors: configured,
     validationError: types.validationError,
+    inlineDiagnostics: inline.diagnostics,
     tags: {
       checker,
       resolveModule,
@@ -155,7 +157,7 @@ export function readApp(
       }
     },
     handler: route => controllerHandler(program, checker, route),
-    middlewareResponses: route => middleware.of(route, locate, findInline),
+    middlewareResponses: route => middleware.of(route, locate, inline.find),
     unauthorizedResponses: () =>
       unauthorized.exception ? exceptions.responses(unauthorized.exception, '401') : [],
   }

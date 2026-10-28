@@ -19,20 +19,14 @@ const HANDLE = Symbol.for('@enzopita/adonisjs-openapi:locate')
 function sourceMapOf({ url, sourceMapURL }: Script): SourceMapPayload | undefined {
   if (!sourceMapURL) return undefined
 
-  try {
-    if (!sourceMapURL.startsWith('data:'))
-      return JSON.parse(readFileSync(new URL(sourceMapURL, url), 'utf8'))
+  if (!sourceMapURL.startsWith('data:'))
+    return JSON.parse(readFileSync(new URL(sourceMapURL, url), 'utf8'))
 
-    const [header = '', data = ''] = sourceMapURL.split(',', 2)
+  const [header = '', data = ''] = sourceMapURL.split(',', 2)
 
-    return JSON.parse(
-      header.endsWith(';base64')
-        ? Buffer.from(data, 'base64').toString()
-        : decodeURIComponent(data),
-    )
-  } catch {
-    return undefined
-  }
+  return JSON.parse(
+    header.endsWith(';base64') ? Buffer.from(data, 'base64').toString() : decodeURIComponent(data),
+  )
 }
 
 function toPath(url: string) {
@@ -60,12 +54,15 @@ function original(script: Script, line: number, column: number): FunctionLocatio
 /**
  * Where V8 says each function was declared, mapped through the source map of its script. A bound
  * function is located by the function it binds. A function V8 has no script with a file for, such
- * as a native one, has no location.
+ * as a native one, has no location. A failure of the inspector ends the lookup and comes back with
+ * the locations found so far. A source map that cannot be read or applied fails only the functions
+ * of its script, and the lookup goes on.
  */
 export function locateFunctions(functions: Function[]) {
   const found = new Map<Function, FunctionLocation>()
+  const failures: Error[] = []
 
-  if (!functions.length) return found
+  if (!functions.length) return { found, failures }
 
   const session = new Session()
   const scripts = new Map<string, Script>()
@@ -117,15 +114,21 @@ export function locateFunctions(functions: Function[]) {
       )?.value?.value
 
       const script = location && scripts.get(location.scriptId)
-      const mapped = script && original(script, location.lineNumber, location.columnNumber ?? 0)
 
-      if (mapped) found.set(fn, mapped)
+      try {
+        const mapped = script && original(script, location.lineNumber, location.columnNumber ?? 0)
+
+        if (mapped) found.set(fn, mapped)
+      } catch (error) {
+        failures.push(error instanceof Error ? error : new Error(String(error)))
+      }
     }
-  } catch {
+  } catch (error) {
+    failures.push(error instanceof Error ? error : new Error(String(error)))
   } finally {
     Reflect.deleteProperty(globalThis, HANDLE)
     session.disconnect()
   }
 
-  return found
+  return { found, failures }
 }

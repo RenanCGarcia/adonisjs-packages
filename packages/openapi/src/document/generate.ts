@@ -90,7 +90,11 @@ export async function generateDocument(
     }
   }
 
-  diagnostics.push(...types.exceptions.diagnostics, ...types.errors.diagnostics)
+  diagnostics.push(
+    ...types.exceptions.diagnostics,
+    ...types.errors.diagnostics,
+    ...types.inlineDiagnostics,
+  )
 
   for (const type of types.schemas.unsupported) diagnostics.push(noJsonSchema(type))
 
