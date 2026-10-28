@@ -8,6 +8,7 @@ import { promisify } from 'node:util'
 import type {
   JsonSchema,
   OpenApiDocument,
+  OpenApiOperation,
   OpenApiReference,
   OpenApiResponse,
 } from '../../src/types.ts'
@@ -43,6 +44,16 @@ export function resolved(
 
 export const json = (response: OpenApiResponse | OpenApiReference | undefined) =>
   inline(response).content!['application/json']!.schema
+
+/**
+ * The `application/json` body schema of an operation, resolving its `$ref` to `components.schemas`.
+ */
+export function body(document: OpenApiDocument, operation: OpenApiOperation | undefined) {
+  const schema = operation!.requestBody!.content['application/json']!.schema
+  const name = schema.$ref?.replace('#/components/schemas/', '')
+
+  return name ? document.components.schemas[name]! : schema
+}
 
 export const object = (properties: Record<string, JsonSchema>): JsonSchema => ({
   type: 'object',

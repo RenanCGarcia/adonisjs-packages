@@ -17,6 +17,7 @@ import { MiddlewareResponses } from '../routes/middleware_responses.ts'
 import { TypeToSchema } from '../schema/type_to_schema.ts'
 import type { Diagnostic, ErrorsConfig, SourceLocation } from '../types.ts'
 import type { RouteOperation } from '../routes/route_operation.ts'
+import { readBodyParser, type BodyParser } from './body_parser.ts'
 import { createProgram } from './create_program.ts'
 import { readEntry, renderEntry } from './entry_module.ts'
 import { defaultInstance, moduleResolver } from './module_resolver.ts'
@@ -33,6 +34,7 @@ export interface AppTypes {
   errors: ConfiguredErrors
   validationError?: ts.Type
   inlineDiagnostics: Diagnostic[]
+  bodyParser: BodyParser
   tags: Omit<TagContext, 'method' | 'problems'>
   locate: (node: ts.Node) => SourceLocation
   routeTypes: (routeName: string) => { request?: ts.Type; response?: ts.Type }
@@ -131,6 +133,7 @@ export function readApp(
     errors: configured,
     validationError: types.validationError,
     inlineDiagnostics: inline.diagnostics,
+    bodyParser: readBodyParser(join(appRoot, 'config/bodyparser.ts')),
     tags: {
       checker,
       resolveModule,

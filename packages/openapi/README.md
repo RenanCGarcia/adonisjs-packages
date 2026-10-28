@@ -425,13 +425,13 @@ When `.adonisjs/client/data.d.ts` exists, every type in its `Data` namespace bec
 ## How types become schemas
 
 - A route must have a name and a controller handler. Closure routes are skipped with `OA-R001`, except the ones `openapiRoutes()` registers.
-- `request.validateUsing()` validates the request body merged with the query string, plus `params`, `headers` and `cookies`. On `GET` and `OPTIONS` operations, the validator fields become query parameters. On other methods they become the body, and the `params` object becomes the path parameters. A route that answers `GET` and `POST` gets one of each.
+- `request.validateUsing()` validates the request body merged with the query string, plus `params`, `headers` and `cookies`. On a method missing from `allowedMethods` in `config/bodyparser.ts`, such as `GET` and `OPTIONS`, the validator fields become query parameters. On other methods they become the body, and the `params` object becomes the path parameters. A route that answers `GET` and `POST` gets one of each.
 - A validator field named `query` is a field like any other, which the app reads from `?query[page]=2` or from the body. It does not document `?page=2`.
 - An object query parameter uses `style: deepObject`, as the app reads `filter[status]=x`. The app reads an array only from a repeated key, `?tags=a&tags=b`.
 - A field is required unless it is `.optional()`. A `.nullable()` field is required, with `null` in its type.
 - An optional path parameter, `/users/:id?`, documents both `/users` and `/users/{id}`. The shorter path's `operationId` ends with `.without_id`, see [Operation ids](#operation-ids).
 - A `HEAD`-only route is left out.
-- A body with a `vine.file()` field is sent as `multipart/form-data`.
+- The body is listed under one media type for each parser in `config/bodyparser.ts` that accepts a type: `application/json`, `application/x-www-form-urlencoded` and `multipart/form-data`, or the parser's first type when its standard type is not listed. The media types reference one schema in `components.schemas`, named after the `operationId` with a `.body` suffix. A body with a `vine.file()` field is listed only under the multipart type, and under `multipart/form-data` when the multipart parser has no types. A setting the generator cannot read as a literal, or a missing file, keeps the bodyparser default.
 - When VineJS cannot describe a field (a file, a custom rule), the generator uses the field's TypeScript type.
 - The doc comment of a property, in a transformer's `toObject()` or a returned type, documents its schema. The text is the `description`, each `@example` adds to `examples`, `@default` is the `default` and `@deprecated` sets `deprecated: true`. A tag value that is not JSON, such as `@example Jane Doe`, is kept as a string.
 - `Date` and Luxon `DateTime` values become `{ type: 'string', format: 'date-time' }`.
@@ -722,6 +722,5 @@ Known cases where the document differs from what the app sends, or where the gen
 - A preset key is matched by name like any other, so `limiter.consume` matches `limiter.use(...).consume()` but not `failures.consume()` on a limiter held in a variable. Add that key to `errors.throwers`.
 - The paginator `metadata` fields are typed `string` by Lucid's `SimplePaginatorMetaKeys`, so they are documented as strings. The app sends numbers and `null`. Fix the type in the app's serializer.
 - Shield's CSRF guard runs on every route of the router stack, and its `exceptRoutes` is evaluated at runtime, so the generator does not document it. A rejected token redirects back with a `302`, although `E_BAD_CSRF_TOKEN` declares `403`, so do not name it in `errors.middleware`. Describe the redirect in the operation's description.
-- A validated body is documented as `application/json`. The bodyparser also accepts `application/x-www-form-urlencoded`, which an HTML form sends.
 - A thrower key names one class. `ally.use('github').user()` also throws `E_OAUTH_MISSING_CODE` (`500`) when the callback has no `code`, which `'ally.user'` cannot document next to `E_OAUTH_STATE_MISMATCH` ([#65](https://github.com/enzopita/adonisjs-packages/issues/65)).
 - A package that declares a field `any`, such as the `email` and `name` of the user that Ally's GitHub driver returns, documents it as `{}`. Type the value in the app, such as `githubUser.email as string | null`.

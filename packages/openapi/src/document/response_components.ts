@@ -1,6 +1,7 @@
 import { relative } from 'node:path'
 import type { OpenApiReference, OpenApiResponse } from '../types.ts'
 import type { ResponseOwner } from './response_owner.ts'
+import { componentName } from './component_name.ts'
 
 interface Shared {
   owner: ResponseOwner
@@ -47,9 +48,7 @@ export class ResponseComponents {
    * `app/exceptions/billing/limit_exception.ts` gives `app.exceptions.billing.limit_exception`.
    */
   #module(owner: ResponseOwner) {
-    return relative(this.#appRoot, owner.file)
-      .replace(/\.[^./\\]+$/, '')
-      .replace(/[^A-Za-z0-9_-]+/g, '.')
+    return componentName(relative(this.#appRoot, owner.file).replace(/\.[^./\\]+$/, ''))
   }
 
   /**

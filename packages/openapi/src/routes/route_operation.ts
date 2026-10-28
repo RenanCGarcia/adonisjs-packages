@@ -12,6 +12,7 @@ export interface RouteOperation {
   operationId: string
   methods: HttpMethod[]
   path: string
+  routerPattern: string
   pathParams: string[]
   middleware: string[]
   inlineMiddleware: { name: string; source: string; fn: Function }[]

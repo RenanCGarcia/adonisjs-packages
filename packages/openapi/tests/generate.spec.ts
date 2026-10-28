@@ -1,6 +1,6 @@
 import { test } from '@japa/runner'
 import type { OpenApiDocument } from '../src/types.ts'
-import { generatePlayground, inline, json, object } from './support/playground.ts'
+import { body, generatePlayground, inline, json, object } from './support/playground.ts'
 
 test.group('openapi:generate on the playground app: the document', group => {
   let document: OpenApiDocument
@@ -75,12 +75,11 @@ test.group('openapi:generate on the playground app: the document', group => {
   })
 
   test('takes body constraints from the VineJS validator', ({ assert }) => {
-    const body =
-      document.paths['/api/v1/auth/signup']!.post!.requestBody!.content['application/json']!.schema
+    const signup = body(document, document.paths['/api/v1/auth/signup']!.post)
 
-    assert.deepEqual(body.properties!.email, { type: 'string', format: 'email', maxLength: 254 })
-    assert.deepEqual(body.properties!.password, { type: 'string', minLength: 8, maxLength: 32 })
-    assert.sameMembers(body.required ?? [], [
+    assert.deepEqual(signup.properties!.email, { type: 'string', format: 'email', maxLength: 254 })
+    assert.deepEqual(signup.properties!.password, { type: 'string', minLength: 8, maxLength: 32 })
+    assert.sameMembers(signup.required ?? [], [
       'fullName',
       'email',
       'password',
@@ -162,22 +161,20 @@ test.group('openapi:generate on the playground app: the document', group => {
   })
 
   test('takes the request body of an unvalidated handler from @requestBody', ({ assert }) => {
-    assert.deepEqual(document.paths['/api/v1/webhooks/mail']!.post!.requestBody, {
-      required: true,
-      content: {
-        'application/json': {
-          schema: {
-            type: 'object',
-            properties: {
-              type: { type: 'string', enum: ['delivered', 'bounced'] },
-              messageId: { type: 'string' },
-              occurredAt: { type: 'string' },
-            },
-            required: ['type', 'messageId', 'occurredAt'],
-            additionalProperties: false,
-          },
-        },
+    const { content } = document.paths['/api/v1/webhooks/mail']!.post!.requestBody!
+
+    assert.deepEqual(content['application/json']!.schema, {
+      $ref: '#/components/schemas/webhooks.mail.body',
+    })
+    assert.deepEqual(document.components.schemas['webhooks.mail.body'], {
+      type: 'object',
+      properties: {
+        type: { type: 'string', enum: ['delivered', 'bounced'] },
+        messageId: { type: 'string' },
+        occurredAt: { type: 'string' },
       },
+      required: ['type', 'messageId', 'occurredAt'],
+      additionalProperties: false,
     })
   })
 
@@ -238,10 +235,9 @@ test.group('openapi:generate on the playground app: the document', group => {
     ])
     assert.isUndefined(probe('echo').requestBody)
     assert.isUndefined(probe('echo', 'post').parameters)
-    assert.deepEqual(
-      probe('echo', 'post').requestBody!.content['application/json']!.schema.properties,
-      { message: { type: 'string' } },
-    )
+    assert.deepEqual(body(document, probe('echo', 'post')).properties, {
+      message: { type: 'string' },
+    })
   })
 
   test('writes the tags from the config', ({ assert }) => {

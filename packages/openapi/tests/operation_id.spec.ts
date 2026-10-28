@@ -1,5 +1,6 @@
 import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import type { Assert } from '@japa/assert'
 import { test } from '@japa/runner'
 import type { OpenApiDocument } from '../src/types.ts'
 import { generateInCopy } from './support/playground.ts'
@@ -14,6 +15,29 @@ function generateWith(source: string) {
       original.replace('defineConfig({', `defineConfig({\n  operationId: ${source},`),
     )
   })
+}
+
+async function documentIn(dir: string) {
+  const raw = await readFile(join(dir, 'openapi.json'), 'utf8')
+  const document: OpenApiDocument = JSON.parse(raw)
+
+  return { raw, document }
+}
+
+function assertComponentsValid(
+  assert: Assert,
+  { raw, document }: { raw: string; document: OpenApiDocument },
+) {
+  for (const name of Object.keys(document.components.schemas))
+    assert.match(name, /^[a-zA-Z0-9._-]+$/)
+
+  assert.notMatch(raw, /"\$ref":"(?!#\/components\/(schemas|responses)\/)/)
+
+  for (const [, kind, name] of raw.matchAll(/"\$ref":"#\/components\/(\w+)\/([^"]*)"/g)) {
+    const names = kind === 'schemas' ? document.components.schemas : document.components.responses
+
+    assert.property(names, name!, `#/components/${kind}/${name} resolves`)
+  }
 }
 
 test.group('openapi:generate: a custom operationId', () => {
@@ -50,5 +74,34 @@ test.group('openapi:generate: a custom operationId', () => {
     const { output } = await generateWith("() => ''")
 
     assert.include(output, 'operationId() must return a non-empty string')
+  })
+
+  test('names the shared body of an id with a space and a slash as a valid component', async ({
+    assert,
+  }) => {
+    const { dir, output } = await generateWith('({ method, path }) => `${method} ${path}`')
+    const generated = await documentIn(dir)
+
+    assert.notInclude(output, 'OA-O001')
+    assert.equal(
+      generated.document.paths['/api/v1/probe/echo']!.post!.operationId,
+      'post /api/v1/probe/echo',
+    )
+    assertComponentsValid(assert, generated)
+  })
+
+  test('numbers the shared bodies of ids that become the same name', async ({ assert }) => {
+    const { dir } = await generateWith(
+      "(() => { let count = 0; return () => `op${' '.repeat(++count)}` })()",
+    )
+
+    const generated = await documentIn(dir)
+
+    const names = Object.keys(generated.document.components.schemas).filter(name =>
+      name.startsWith('op.'),
+    )
+
+    assert.includeMembers(names, ['op.body', 'op.body_2'])
+    assertComponentsValid(assert, generated)
   })
 })

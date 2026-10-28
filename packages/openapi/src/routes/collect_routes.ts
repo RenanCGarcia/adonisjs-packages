@@ -120,6 +120,7 @@ export async function collectRoutes(
 
     const operation = {
       name: route.name,
+      routerPattern: route.pattern,
       methods,
       ...(middlewareByRoute.get(routeKey(route)) ?? {
         middleware: [],
