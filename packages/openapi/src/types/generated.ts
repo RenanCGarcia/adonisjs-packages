@@ -15,8 +15,8 @@ export type ResponseSource = (
   | { kind: 'return' }
   | { kind: 'answer' }
   | { kind: 'throw'; exception: string }
-  | { kind: 'thrower'; call: string; exception: string }
-  | { kind: 'middleware'; middleware: string }
+  | { kind: 'thrower'; call: string; exception: string; preset?: string }
+  | { kind: 'middleware'; middleware: string; preset?: string }
   | { kind: 'security'; middleware: string }
   | { kind: 'validator' }
   | { kind: 'tag'; tag: '@throws' | '@response' }

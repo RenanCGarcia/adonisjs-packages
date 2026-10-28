@@ -75,6 +75,21 @@ test.group('openapi:generate --explain', () => {
     assert.notInclude(`${throttled.stdout}${throttled.stderr}`, 'OA-R003 probe.throttled')
   })
 
+  test('names the package whose preset documents a response', async ({ assert }) => {
+    const { stdout } = await run(
+      'node',
+      ['ace', 'openapi:generate', '--explain=probe.probe.whoami'],
+      {
+        cwd: playground,
+      },
+    )
+
+    assert.include(
+      stdout,
+      'auth.authenticate() throws E_UNAUTHORIZED_ACCESS, preset of @adonisjs/auth (app/controllers/probe_controller.ts:',
+    )
+  })
+
   test('names the middleware whose handle() calls a thrower', async ({ assert }) => {
     const { stdout } = await run('node', ['ace', 'openapi:generate', '--explain=probe.managed'], {
       cwd: playground,

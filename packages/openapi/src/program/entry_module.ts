@@ -8,7 +8,7 @@ import type { RouteOperation } from '../routes/route_operation.ts'
 const NAMES = {
   validationError: 'ValidationError',
   errorBody: 'ErrorBody',
-  unauthorizedBody: 'UnauthorizedBody',
+  authErrorBody: 'AuthErrorBody',
   config: 'Config',
 }
 
@@ -99,7 +99,7 @@ export function renderEntry(
     ...imports,
     validationError,
     `export type ${NAMES.errorBody} = ${errorBody ? toRelative(errorBody) : '{ message: string }'}`,
-    `export type ${NAMES.unauthorizedBody} = { errors: { message: string }[] }`,
+    `export type ${NAMES.authErrorBody} = { errors: { message: string }[] }`,
     configFile
       ? `export type ${NAMES.config} = typeof import('${relative(join(entryFile, '..'), configFile).replace(/\.ts$/, '.js')}').default`
       : '',
@@ -112,7 +112,7 @@ export interface EntryTypes {
   routes: ts.InterfaceDeclaration
   validationError?: ts.Type
   errorBody: ts.Type
-  unauthorizedBody: ts.Type
+  authErrorBody: ts.Type
   config?: ts.Type
 }
 
@@ -129,7 +129,7 @@ export function readEntry(checker: ts.TypeChecker, entry: ts.SourceFile): EntryT
     routes: entry.statements.find(ts.isInterfaceDeclaration)!,
     validationError: typeOf(NAMES.validationError),
     errorBody: typeOf(NAMES.errorBody)!,
-    unauthorizedBody: typeOf(NAMES.unauthorizedBody)!,
+    authErrorBody: typeOf(NAMES.authErrorBody)!,
     config: typeOf(NAMES.config),
   }
 }

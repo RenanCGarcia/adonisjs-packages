@@ -3,12 +3,12 @@ import { join, relative } from 'node:path'
 import { existsSync } from 'node:fs'
 import { property } from '../analysis/symbols.ts'
 import { ConfiguredErrors } from '../analysis/errors/configured_errors.ts'
+import { packageException, packagePresets } from '../analysis/errors/presets.ts'
 import { exceptionIndex } from '../analysis/exceptions/exception_index.ts'
 import {
   readExceptionResponses,
   type ExceptionResponses,
 } from '../analysis/exceptions/exception_responses.ts'
-import { unauthorizedException } from '../analysis/exceptions/unauthorized.ts'
 import type { TagContext } from '../analysis/tags/tag_context.ts'
 import { readKernel } from '../routes/kernel.ts'
 import { controllerHandler, type ControllerHandler } from '../routes/controller_handler.ts'
@@ -86,16 +86,15 @@ export function readApp(
   const instanceOf = (specifier: string) =>
     defaultInstance(checker, resolveModule, specifier, resolveFrom)
 
-  const unauthorized = unauthorizedException(program, checker, resolveFrom, {
-    options,
-    body: types.unauthorizedBody,
-  })
+  const resolution = { program, checker, from: resolveFrom, options }
+  const { presets, packaged } = packagePresets(resolution, types.authErrorBody)
+  const unauthorized = packageException(resolution, '@adonisjs/auth', 'E_UNAUTHORIZED_ACCESS')
 
   const exceptions = readExceptionResponses(
     checker,
     instanceOf(kernel.errorHandler ?? '#exceptions/handler'),
     { type: types.errorBody, overridesHandler: errors.body !== undefined },
-    unauthorized.packaged,
+    packaged,
   )
 
   const configured = new ConfiguredErrors(
@@ -104,7 +103,7 @@ export function readApp(
     types.config,
     exceptions,
     locate,
-    unauthorized.exception,
+    presets,
   )
 
   const transformers = transformerTypes(checker, program.getSourceFile(dataFile))
@@ -158,7 +157,6 @@ export function readApp(
     },
     handler: route => controllerHandler(program, checker, route),
     middlewareResponses: route => middleware.of(route, locate, inline.find),
-    unauthorizedResponses: () =>
-      unauthorized.exception ? exceptions.responses(unauthorized.exception, '401') : [],
+    unauthorizedResponses: () => (unauthorized ? exceptions.responses(unauthorized, '401') : []),
   }
 }

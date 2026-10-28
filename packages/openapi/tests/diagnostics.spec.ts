@@ -173,7 +173,7 @@ test.group('openapi:generate on an app whose tags are wrong', group => {
   test('warns that a package exception renders a body its declaration does not carry', ({
     assert,
   }) => {
-    assert.include(output, 'OA-E002 E_INVALID_CREDENTIALS renders its own body')
+    assert.include(output, 'OA-E002 E_BAD_CSRF_TOKEN renders its own body')
   })
 
   test('reads the status of an errors entry without running its class', ({ assert }) => {

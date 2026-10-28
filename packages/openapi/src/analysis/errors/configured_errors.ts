@@ -1,16 +1,22 @@
 import ts from 'typescript'
-import { exceptionType, type ExceptionType } from '../exceptions/exception_class.ts'
+import { exceptionType } from '../exceptions/exception_class.ts'
 import { declaredStatus } from '../exceptions/exception_status.ts'
 import type { ExceptionResponses } from '../exceptions/exception_responses.ts'
 import type { Thrown } from '../exceptions/own_response.ts'
 import { property } from '../symbols.ts'
 import { callMatches } from './throwers.ts'
-import { entryStatusUnreadable, unmatchedKey, type ErrorsKind } from '../../diagnostics/errors.ts'
+import { isPresetKey, type PresetException } from './presets.ts'
+import {
+  entryStatusUnreadable,
+  unknownPresetKey,
+  unmatchedKey,
+  type ErrorsKind,
+} from '../../diagnostics/errors.ts'
 import type { Diagnostic, ErrorsConfig, ResponseSource, SourceLocation } from '../../types.ts'
 
 /**
  * An exception an `errors.throwers` or `errors.middleware` entry names, with its class as the
- * type of the config reads it and the responses that class gives.
+ * type of the config reads it and the responses that class gives, or one a package preset names.
  */
 export interface ConfiguredException {
   key: string
@@ -18,6 +24,7 @@ export interface ConfiguredException {
   responses: Thrown[]
   owner?: ts.Symbol
   location?: SourceLocation
+  preset?: PresetException
 }
 
 /**
@@ -29,7 +36,8 @@ export class ConfiguredErrors {
   #errors: ErrorsConfig
   #config?: ts.Type
   #exceptions: ExceptionResponses
-  #unauthorized?: ExceptionType
+  #creators: PresetException[]
+  #presets: ConfiguredException[]
   #location: (node: ts.Node) => SourceLocation
   #entries = new Map<ErrorsKind, ConfiguredException[]>()
   #matched = new Set<string>()
@@ -41,31 +49,34 @@ export class ConfiguredErrors {
     config: ts.Type | undefined,
     exceptions: ExceptionResponses,
     location: (node: ts.Node) => SourceLocation,
-    unauthorized?: ExceptionType,
+    presets: PresetException[],
   ) {
     this.#checker = checker
     this.#errors = errors
     this.#config = config
     this.#exceptions = exceptions
     this.#location = location
-    this.#unauthorized = unauthorized
-  }
+    this.#creators = presets.filter(({ packageDir }) => packageDir)
+    this.#presets = presets.flatMap(preset => {
+      if (this.#errors[preset.kind]?.[preset.key] !== undefined) return []
 
-  // `auth.getUserOrFail()` throws `E_UNAUTHORIZED_ACCESS` in every guard of `@adonisjs/auth`.
-  #builtinThrowers(): ConfiguredException[] {
-    const key = 'auth.getUserOrFail'
-    const exception = this.#unauthorized
+      let responses: Thrown[] | undefined
 
-    if (!exception || this.#errors.throwers?.[key]) return []
-
-    return [
-      {
-        key,
-        name: exception.name,
-        responses: this.#exceptions.responses(exception, '401'),
-        owner: exception.symbol,
-      },
-    ]
+      return [
+        {
+          key: preset.key,
+          name: preset.exception.name,
+          owner: preset.exception.symbol,
+          preset,
+          get responses() {
+            return (responses ??= exceptions.responses(
+              preset.exception,
+              declaredStatus(checker, preset.exception),
+            ))
+          },
+        },
+      ]
+    })
   }
 
   #entriesOf(kind: ErrorsKind) {
@@ -75,10 +86,19 @@ export class ConfiguredErrors {
 
     const types = property(this.#checker, property(this.#checker, this.#config, 'errors'), kind)
 
-    const entries = Object.entries(this.#errors[kind] ?? {}).map(
-      ([key, value]): ConfiguredException => {
+    const entries = Object.entries(this.#errors[kind] ?? {}).flatMap(
+      ([key, value]): ConfiguredException[] => {
         const symbol = types && this.#checker.getPropertyOfType(types, key)
         const declaration = symbol?.valueDeclaration
+
+        if (value === false) {
+          if (!isPresetKey(kind, key))
+            this.#problems.push(
+              unknownPresetKey(kind, key, declaration && this.#location(declaration)),
+            )
+
+          return []
+        }
 
         const initializer =
           declaration && ts.isPropertyAssignment(declaration) ? declaration.initializer : undefined
@@ -102,7 +122,7 @@ export class ConfiguredErrors {
         if (!entry.responses.length)
           this.#problems.push(entryStatusUnreadable(kind, key, entry.name, entry.location))
 
-        return entry
+        return [entry]
       },
     )
 
@@ -126,7 +146,9 @@ export class ConfiguredErrors {
   }
 
   throwerResponses(invoked: ts.CallExpression[]) {
-    return [...this.#entriesOf('throwers'), ...this.#builtinThrowers()].flatMap(entry =>
+    const presets = this.#presets.filter(({ preset }) => preset?.kind === 'throwers')
+
+    return [...this.#entriesOf('throwers'), ...presets].flatMap(entry =>
       invoked
         .filter(call => callMatches(call, entry.key))
         .flatMap(call => {
@@ -136,6 +158,7 @@ export class ConfiguredErrors {
             kind: 'thrower',
             call: entry.key,
             exception: entry.name,
+            ...(entry.preset && { preset: entry.preset.package }),
             location: this.#location(call),
           }
 
@@ -144,29 +167,59 @@ export class ConfiguredErrors {
     )
   }
 
-  namesMiddleware(name: string) {
-    return this.#entriesOf('middleware').some(({ key }) => key === name)
+  hasMiddlewareKey(name: string) {
+    return this.#errors.middleware?.[name] !== undefined
+  }
+
+  #createdMiddlewareEntry(file: string) {
+    const creator = this.#creators.find(({ packageDir }) => file.startsWith(packageDir!))
+
+    if (!creator) return undefined
+
+    const entry =
+      this.#entriesOf('middleware').find(({ key }) => key === creator.key) ??
+      this.#presets.find(({ preset }) => preset === creator)
+
+    if (entry && !entry.preset) this.#matched.add(`middleware:${entry.key}`)
+
+    return entry
+  }
+
+  createsMiddleware(file: string) {
+    return this.#creators.some(({ packageDir }) => file.startsWith(packageDir!))
   }
 
   /**
    * What the middleware an `errors.middleware` key names throw, for a route whose middleware go by
-   * `names`: their names, as `node ace list:routes` shows them, and their kernel specifiers.
+   * `names`: their names, as `node ace list:routes` shows them, and their kernel specifiers. Then
+   * what the function middleware a package created throw, `created` by their names and files.
    */
-  middlewareResponses(names: Set<string>) {
-    return this.#entriesOf('middleware')
+  middlewareResponses(names: Set<string>, created: { name: string; file: string }[]) {
+    const named = this.#entriesOf('middleware')
       .filter(({ key }) => names.has(key))
-      .flatMap(entry => {
+      .map(entry => {
         this.#matched.add(`middleware:${entry.key}`)
 
-        return entry.responses.flatMap(({ code, bodies }) =>
-          (bodies.length ? bodies : [undefined]).map(body => ({
-            code,
-            body,
-            middleware: entry.key,
-            location: entry.location,
-            owner: entry.owner,
-          })),
-        )
+        return { middleware: entry.key, entry }
       })
+
+    const packaged = created.flatMap(({ name, file }) => {
+      const entry = this.#createdMiddlewareEntry(file)
+
+      return entry ? [{ middleware: name, entry }] : []
+    })
+
+    return [...named, ...packaged].flatMap(({ middleware, entry }) =>
+      entry.responses.flatMap(({ code, bodies }) =>
+        (bodies.length ? bodies : [undefined]).map(body => ({
+          code,
+          body,
+          middleware,
+          location: entry.location,
+          owner: entry.owner,
+          preset: entry.preset?.package,
+        })),
+      ),
+    )
   }
 }

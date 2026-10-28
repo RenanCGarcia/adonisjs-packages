@@ -6,6 +6,9 @@ import { sendOutput } from '../src/output_message.ts'
 import type { ResponseSource } from '../src/types.ts'
 import { OpenApiCommand } from './base_command.ts'
 
+const preset = (source: { preset?: string }) =>
+  source.preset ? `, preset of ${source.preset}` : ''
+
 function describe(source: ResponseSource) {
   const where = source.location ? ` (${source.location.file}:${source.location.line})` : ''
 
@@ -17,9 +20,9 @@ function describe(source: ResponseSource) {
     case 'throw':
       return `throw new ${source.exception}()${where}`
     case 'thrower':
-      return `${source.call}() throws ${source.exception}${where}`
+      return `${source.call}() throws ${source.exception}${preset(source)}${where}`
     case 'middleware':
-      return `the middleware ${source.middleware}${where}`
+      return `the middleware ${source.middleware}${preset(source)}${where}`
     case 'security':
       return `the ${source.middleware} middleware secures the route`
     case 'validator':

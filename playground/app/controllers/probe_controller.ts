@@ -191,6 +191,11 @@ export default class ProbeController {
     return serialize(MemberCardTransformer.transform(auth.getUserOrFail()))
   }
 
+  async whoami({ auth }: HttpContext) {
+    const user = await auth.authenticate()
+    return { id: user.id }
+  }
+
   async model() {
     return new User()
   }

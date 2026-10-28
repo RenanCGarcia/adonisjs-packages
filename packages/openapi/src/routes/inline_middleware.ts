@@ -12,6 +12,7 @@ export type InlineMiddleware = Omit<RouteOperation['inlineMiddleware'][number], 
 export type InlineMatch =
   | { kind: 'found'; body: ts.ConciseBody }
   | { kind: 'missing' }
+  | { kind: 'package'; file: string }
   | { kind: 'ambiguous'; candidates: FunctionNode[] }
 
 // Compilers print these differently: swc adds `;`, drops a trailing `,` and the parens of `(x as T)`.
@@ -139,11 +140,7 @@ function erasedTokens(fn: FunctionNode) {
  * The body of the app function whose head, before its body, holds the location: V8 locates a
  * function at its parameters, and an enclosing function never has them in its head.
  */
-function declaredAt(program: ts.Program, { file, line, column }: FunctionLocation) {
-  const sourceFile = program.getSourceFile(file)
-
-  if (!sourceFile || !isAppSource(sourceFile)) return undefined
-
+function declaredAt(sourceFile: ts.SourceFile, { line, column }: FunctionLocation) {
   const position = sourceFile.getPositionOfLineAndCharacter(line, column)
   let found: ts.ConciseBody | undefined
 
@@ -244,7 +241,11 @@ export function inlineMiddleware(program: ts.Program, middleware: InlineMiddlewa
 
     if (!location) return match
 
-    const body = declaredAt(program, location)
+    const sourceFile = program.getSourceFile(location.file)
+
+    if (!sourceFile || !isAppSource(sourceFile)) return { kind: 'package', file: location.file }
+
+    const body = declaredAt(sourceFile, location)
 
     return body ? { kind: 'found', body } : match
   }

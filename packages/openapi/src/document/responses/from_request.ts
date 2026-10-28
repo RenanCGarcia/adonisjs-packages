@@ -17,10 +17,15 @@ export function fromMiddleware(context: ResponseContext) {
 
   context.diagnostics.push(...diagnostics)
 
-  for (const { code, body, middleware, location, owner } of responses)
+  for (const { code, body, middleware, location, owner, preset } of responses)
     outcomes.add(
       code,
-      { kind: 'middleware', middleware, ...(location && { location }) },
+      {
+        kind: 'middleware',
+        middleware,
+        ...(preset && { preset }),
+        ...(location && { location }),
+      },
       { bodies: body ? [jsonBody(context, body)] : [], owner },
     )
 }

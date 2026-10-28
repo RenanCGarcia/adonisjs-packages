@@ -26,6 +26,20 @@ export function ownBodyUndeclared(name: string): Diagnostic {
   }
 }
 
+export function unknownPresetKey(
+  kind: ErrorsKind,
+  key: string,
+  location?: SourceLocation,
+): Diagnostic {
+  return {
+    code: 'OA-E003',
+    severity: 'warning',
+    message: `errors.${kind}['${key}'] is false but names no preset of a first-party package`,
+    fix: 'name the preset key to turn off, such as `bouncer.authorize` or `limiter.define`',
+    ...(location && { location }),
+  }
+}
+
 export function unmatchedKey(kind: ErrorsKind, key: string, location?: SourceLocation): Diagnostic {
   const throwers = kind === 'throwers'
 

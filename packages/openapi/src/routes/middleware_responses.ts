@@ -10,10 +10,20 @@ import type { InlineMatch, InlineMiddleware } from './inline_middleware.ts'
 import type { RouteOperation } from './route_operation.ts'
 import type { Kernel } from './kernel.ts'
 
+export interface MiddlewareResponse {
+  code: string
+  body?: ts.Type
+  middleware: string
+  owner?: ts.Symbol
+  location?: SourceLocation
+  preset?: string
+}
+
 /**
  * What the route's middleware answer with when they stop the request, such as the `400` of
  * `response.badRequest(...)` in a tenant middleware or in a function passed to `.use()`, and what
- * the package middleware an `errors.middleware` key names throw. Only answers with a status are kept.
+ * the package middleware an `errors.middleware` key or a package preset names throw. Only answers
+ * with a status are kept.
  */
 export class MiddlewareResponses {
   #checker: ts.TypeChecker
@@ -84,19 +94,24 @@ export class MiddlewareResponses {
     ]
 
     const diagnostics: Diagnostic[] = []
+    const created: { name: string; file: string }[] = []
 
     const inline = route.inlineMiddleware.flatMap(({ name, ...runtime }) => {
       const match = findInline(runtime)
 
       if (match.kind === 'found') return [{ middleware: name, answers: this.#read([match.body]) }]
 
-      if (match.kind === 'missing' && this.#errors.namesMiddleware(name)) return []
+      if (match.kind === 'ambiguous') {
+        diagnostics.push(ambiguousInlineMiddleware(route.name, name, match.candidates.map(locate)))
 
-      diagnostics.push(
-        match.kind === 'missing'
-          ? unmatchedInlineMiddleware(route.name, name)
-          : ambiguousInlineMiddleware(route.name, name, match.candidates.map(locate)),
-      )
+        return []
+      }
+
+      if (this.#errors.hasMiddlewareKey(name)) return []
+
+      if (match.kind === 'package' && this.#errors.createsMiddleware(match.file))
+        created.push({ name, file: match.file })
+      else diagnostics.push(unmatchedInlineMiddleware(route.name, name))
 
       return []
     })
@@ -113,12 +128,11 @@ export class MiddlewareResponses {
       ),
     )
 
-    return {
-      responses: [
-        ...read,
-        ...this.#errors.middlewareResponses(new Set([...specifiers, ...route.middleware])),
-      ],
-      diagnostics,
-    }
+    const responses: MiddlewareResponse[] = [
+      ...read,
+      ...this.#errors.middlewareResponses(new Set([...specifiers, ...route.middleware]), created),
+    ]
+
+    return { responses, diagnostics }
   }
 }

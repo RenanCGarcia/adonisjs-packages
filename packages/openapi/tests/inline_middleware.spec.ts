@@ -73,12 +73,9 @@ test.group('openapi:generate on functions passed to .use()', group => {
     assert.notInclude(output, 'OA-R003 inline.bound')
   })
 
-  test('documents no response of a function the app sources do not have', ({ assert }) => {
-    assert.match(
-      output,
-      /OA-R003 inline\.packaged: the middleware \w+ passed to \.use\(\) is not a function of the app's sources, its responses are not documented/,
-    )
-    assert.deepEqual(Object.keys(responses('packaged')), ['200'])
+  test('documents the 429 of a throttle by the package that created it', ({ assert }) => {
+    assert.deepEqual(Object.keys(responses('packaged')), ['200', '429'])
+    assert.notInclude(output, 'OA-R003 inline.packaged')
   })
 })
 
