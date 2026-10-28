@@ -221,12 +221,12 @@ export function inlineMiddleware(program: ts.Program, middleware: InlineMiddlewa
         middleware.flatMap(({ source, fn }) => (bySource(source).kind === 'missing' ? [fn] : [])),
       )
 
-      const [first] = failures
+      const [first, ...rest] = [...new Set(failures.map(({ message }) => message))]
 
       if (first) {
-        const more = failures.length > 1 ? `, and ${failures.length - 1} more` : ''
+        const more = rest.length ? `, and ${rest.length} more` : ''
 
-        diagnostics.push(inlineLookupFailed(`${first.message}${more}`))
+        diagnostics.push(inlineLookupFailed(`${first}${more}`))
       }
 
       locations = found

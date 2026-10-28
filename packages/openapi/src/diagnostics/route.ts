@@ -51,6 +51,7 @@ export function inlineLookupFailed(reason: string): Diagnostic {
     code: 'OA-R005',
     severity: 'warning',
     message: `locating the functions passed to .use() failed (${reason}), those the app's sources do not match by text are reported as not a function of the app's sources`,
+    fix: 'run the app with readable source maps and the inspector available, or register the middleware as a named middleware',
   }
 }
 

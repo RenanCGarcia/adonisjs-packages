@@ -89,6 +89,23 @@ test.group('locateFunctions', group => {
     assert.lengthOf(failures, 0)
   })
 
+  test('counts distinct errors, not functions, in the failed lookup', ({ assert }) => {
+    const mapped = (name: string, map: string): Function[] =>
+      runInThisContext(`[() => 1, () => 2]\n//# sourceMappingURL=data:application/json,${map}`, {
+        filename: `file:///${name}.js`,
+      })
+
+    const functions = [...mapped('one', 'not-json'), ...mapped('two', '%7B%7D')]
+    const middleware = functions.map(fn => ({ source: fn.toString(), fn }))
+    const { find, diagnostics } = inlineMiddleware(ts.createProgram([], {}), middleware)
+
+    find(middleware[0]!)
+
+    assert.lengthOf(diagnostics, 1)
+    assert.include(diagnostics[0]!.message, ', and 1 more)')
+    assert.include(diagnostics[0]!.fix, 'register the middleware as a named middleware')
+  })
+
   test('reports a failed lookup once, and still answers', ({ assert }) => {
     failConnect()
 
